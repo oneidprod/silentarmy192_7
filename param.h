@@ -1,5 +1,5 @@
-#define PARAM_N				200
-#define PARAM_K				9
+#define PARAM_N				192
+#define PARAM_K				7
 #define PREFIX                          (PARAM_N / (PARAM_K + 1))
 #define NR_INPUTS                       (1 << PREFIX)
 // Approximate log base 2 of number of elements in hash tables
@@ -31,16 +31,15 @@
 // Even (as opposed to odd) values of OVERHEAD sometimes significantly decrease
 // performance as they cause VRAM channel conflicts.
 #if NR_ROWS_LOG == 16
-#error "NR_ROWS_LOG = 16 is currently broken - do not use"
 #define OVERHEAD                        3
 #elif NR_ROWS_LOG == 18
 #define OVERHEAD                        3
 #elif NR_ROWS_LOG == 19
 #define OVERHEAD                        5
 #elif NR_ROWS_LOG == 20 && OPTIM_SIMPLIFY_ROUND
-#define OVERHEAD                        6
+#define OVERHEAD                        1 //1
 #elif NR_ROWS_LOG == 20
-#define OVERHEAD                        9
+#define OVERHEAD                        1 //1
 #endif
 
 #define NR_ROWS                         (1 << NR_ROWS_LOG)
@@ -56,9 +55,9 @@
 // Length of nonce
 #define ZCASH_NONCE_LEN			32
 // Length of encoded representation of solution size
-#define ZCASH_SOLSIZE_LEN		1
+#define ZCASH_SOLSIZE_LEN		3
 // Solution size (1344 = 0x540) represented as a compact integer, in hex
-#define ZCASH_SOLSIZE_HEX               "fd4005"
+#define ZCASH_SOLSIZE_HEX               "fd9001"
 // Length of encoded solution (512 * 21 bits / 8 = 1344 bytes)
 #define ZCASH_SOL_LEN                   ((1 << PARAM_K) * (PREFIX + 1) / 8)
 // Last N_ZERO_BYTES of nonce must be zero due to my BLAKE2B optimization
@@ -71,7 +70,7 @@
 // instructions. 10 is the max supported by the hw.
 #define BLAKE_WPS               	10
 // Maximum number of solutions reported by kernel to host
-#define MAX_SOLS			10
+#define MAX_SOLS			2000
 // Length of SHA256 target
 #define SHA256_TARGET_LEN               (256 / 8)
 

@@ -1,16 +1,19 @@
 # Change this path if the SDK was installed in a non-standard location
-OPENCL_HEADERS = "/opt/AMDAPPSDK-3.0/include"
+# OPENCL_HEADERS = "/opt/AMDAPPSDK-3.0/include"
+OPENCL_HEADERS = "/usr/lib/x86_64-linux-gnu/beignet/include/"
 # By default libOpenCL.so is searched in default system locations, this path
 # lets you adds one more directory to the search path.
-LIBOPENCL = "/opt/amdgpu-pro/lib/x86_64-linux-gnu"
+# LIBOPENCL = "/opt/amdgpu-pro/lib/x86_64-linux-gnu"
+LIBOPENCL = "/usr/lib/x86_64-linux-gnu/beignet/"
 
 CC = gcc
 CPPFLAGS = -I${OPENCL_HEADERS}
-CFLAGS = -O2 -std=gnu99 -pedantic -Wextra -Wall \
+CFLAGS = -O3 -std=gnu99 -pedantic -Wextra -Wall \
     -Wno-deprecated-declarations \
     -Wno-overlength-strings
 LDFLAGS = -rdynamic -L${LIBOPENCL}
-LDLIBS = -lOpenCL -lrt
+# LDLIBS = -lOpenCL -lrt
+LDLIBS= -lcl -lrt
 OBJ = main.o blake.o sha256.o
 INCLUDES = blake.h param.h _kernel.h sha256.h
 

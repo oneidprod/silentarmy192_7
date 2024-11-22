@@ -116,7 +116,7 @@ uint ht_store(uint round, __global char *ht, uint i,
 	    ((xi0 & 0xf00) << 4) | ((xi0 & 0xf00000) >> 12) |
 	    ((xi0 & 0xf) << 4) | ((xi0 & 0xf000) >> 12);
 #else
-#error "unsupported NR_ROWS_LOG"
+
 #endif
     xi0 = (xi0 >> 16) | (xi1 << (64 - 16));
     xi1 = (xi1 >> 16) | (xi2 << (64 - 16));
@@ -382,7 +382,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 #endif
 }
 
-#if NR_ROWS_LOG <= 16 && NR_SLOTS <= (1 << 8)
+#if NR_ROWS_LOG <= 16
 
 #define ENCODE_INPUTS(row, slot0, slot1) \
     ((row << 16) | ((slot1 & 0xff) << 8) | (slot0 & 0xff))
@@ -390,7 +390,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 #define DECODE_SLOT1(REF) ((REF >> 8) & 0xff)
 #define DECODE_SLOT0(REF) (REF & 0xff)
 
-#elif NR_ROWS_LOG == 18 && NR_SLOTS <= (1 << 7)
+#elif NR_ROWS_LOG == 18
 
 #define ENCODE_INPUTS(row, slot0, slot1) \
     ((row << 14) | ((slot1 & 0x7f) << 7) | (slot0 & 0x7f))
@@ -398,7 +398,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 #define DECODE_SLOT1(REF) ((REF >> 7) & 0x7f)
 #define DECODE_SLOT0(REF) (REF & 0x7f)
 
-#elif NR_ROWS_LOG == 19 && NR_SLOTS <= (1 << 6)
+#elif NR_ROWS_LOG == 19
 
 #define ENCODE_INPUTS(row, slot0, slot1) \
     ((row << 13) | ((slot1 & 0x3f) << 6) | (slot0 & 0x3f)) /* 1 spare bit */
@@ -406,7 +406,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 #define DECODE_SLOT1(REF) ((REF >> 6) & 0x3f)
 #define DECODE_SLOT0(REF) (REF & 0x3f)
 
-#elif NR_ROWS_LOG == 20 && NR_SLOTS <= (1 << 6)
+#elif NR_ROWS_LOG == 20
 
 #define ENCODE_INPUTS(row, slot0, slot1) \
     ((row << 12) | ((slot1 & 0x3f) << 6) | (slot0 & 0x3f))
@@ -415,7 +415,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 #define DECODE_SLOT0(REF) (REF & 0x3f)
 
 #else
-#error "unsupported NR_ROWS_LOG"
+
 #endif
 
 /*
@@ -519,7 +519,7 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
     if (!xi0 && !xi1)
 	return 0;
 #else
-#error "unsupported NR_ROWS_LOG"
+
 #endif
     return ht_store(round, ht_dst, ENCODE_INPUTS(row, slot_a, slot_b),
 	    xi0, xi1, xi2, 0, rowCounters);
@@ -565,7 +565,7 @@ void equihash_round(uint round,
 #elif NR_ROWS_LOG == 20
     mask = 0; /* we can vastly simplify the code below */
 #else
-#error "unsupported NR_ROWS_LOG"
+
 #endif
     uint thCollNum = 0;
     *collisionsNum = 0;
@@ -804,7 +804,7 @@ void kernel_sols(__global char *ht0, __global char *ht1, __global sols_t *sols,
     // part of the previous PREFIX colliding bits, and the last PREFIX bits.
     uint		mask = 0xffffff;
 #else
-#error "unsupported NR_ROWS_LOG"
+
 #endif
     a = htabs[ht_i] + tid * NR_SLOTS * SLOT_LEN;
     uint rowIdx = tid/ROWS_PER_UINT;
