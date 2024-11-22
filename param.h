@@ -56,7 +56,7 @@
 // Length of nonce
 #define ZCASH_NONCE_LEN			32
 // Length of encoded representation of solution size
-#define ZCASH_SOLSIZE_LEN		3
+#define ZCASH_SOLSIZE_LEN		1
 // Solution size (1344 = 0x540) represented as a compact integer, in hex
 #define ZCASH_SOLSIZE_HEX               "fd4005"
 // Length of encoded solution (512 * 21 bits / 8 = 1344 bytes)
