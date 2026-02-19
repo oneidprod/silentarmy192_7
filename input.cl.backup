@@ -688,24 +688,8 @@ KERNEL_ROUND(2)
 KERNEL_ROUND(3)
 KERNEL_ROUND(4)
 KERNEL_ROUND(5)
+KERNEL_ROUND(6)
 KERNEL_ROUND(7)
-
-// kernel_round6 for 192,7 - final round takes an extra argument, "sols"
-__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
-void kernel_round6(__global char *ht_src, __global char *ht_dst,
-    __global uint *rowCountersSrc, __global uint *rowCountersDst,
-    __global uint *debug, __global sols_t *sols)
-{
-    uint            tid = get_global_id(0);
-    __local uchar   first_words_data[(NR_SLOTS+2)*64];
-    __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64];
-    __local uint    collisionsNum;
-    equihash_round(6, ht_src, ht_dst, debug, first_words_data, collisionsData,
-        &collisionsNum, rowCountersSrc, rowCountersDst);
-    if (!tid)
-        sols->nr = sols->likely_invalids = 0;
-}
-
 
 // kernel_round8 takes an extra argument, "sols"
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))

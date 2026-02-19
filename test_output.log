@@ -1,0 +1,26 @@
+Solving default all-zero 140-byte header
+Found 1 OpenCL platform(s)
+Using GPU device ID 0
+Building program
+Hash tables will use 2147.5 MB
+Running...
+
+Solving nonce 0000000000000000000000000000000000000000000000000000000000000000
+Round 0
+Dropped: 0 (coll) 0 (stor)
+Round 1
+Dropped: 0 (coll) 0 (stor)
+Round 2
+Dropped: 0 (coll) 0 (stor)
+Round 3
+Dropped: 0 (coll) 0 (stor)
+Round 4
+Dropped: 0 (coll) 0 (stor)
+Round 5
+Dropped: 0 (coll) 0 (stor)
+Round 6
+Dropped: 0 (coll) 0 (stor)
+Retrieved 0 potential solutions
+Nonce 0000000000000000000000000000000000000000000000000000000000000000: 0 sols
+Stats: 0 likely invalids
+Total 0 solutions in 10296.0 ms (0.0 Sol/s)
