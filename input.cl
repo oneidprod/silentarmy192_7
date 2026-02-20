@@ -563,7 +563,7 @@ void equihash_round(uint round,
 #elif NR_ROWS_LOG == 19
     mask = ((!(round % 2)) ? 0x01 : 0x10);
 #elif NR_ROWS_LOG == 20
-    mask = 0; /* we can vastly simplify the code below */
+    mask = ((!(round % 2)) ? 0xF0 : 0x0F);
 #else
 
 #endif
