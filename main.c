@@ -515,63 +515,48 @@ void init_ht(cl_command_queue queue, cl_kernel k_init_ht, cl_mem buf_ht,
 }
 
 /*
-** Write ZCASH_SOL_LEN bytes representing the encoded solution as per the
-** Zcash protocol specs (512 x 21-bit inputs).
-**
-** out		ZCASH_SOL_LEN-byte buffer where the solution will be stored
-** inputs	array of 32-bit inputs
-** n		number of elements in array
-*/
+/** 
+ * Write ZCASH_SOL_LEN bytes representing the encoded solution as per the
+ * Equihash 192,7 protocol specs (128 x 25-bit inputs).
+ * 
+ * out    ZCASH_SOL_LEN-byte buffer where the solution will be stored (400 bytes)
+ * inputs array of 32-bit inputs (128 indices)
+ * n      number of elements in array (should be 128)
+ */
 void store_encoded_sol(uint8_t *out, uint32_t *inputs, uint32_t n)
 {
-    uint32_t byte_pos = 0;
-    int32_t bits_left = PREFIX + 1;
-    uint8_t x = 0;
-    uint8_t x_bits_used = 0;
-    while (byte_pos < n)
-      {
-        if (bits_left >= 8 - x_bits_used)
-          {
-            x |= inputs[byte_pos] >> (bits_left - 8 + x_bits_used);
-            bits_left -= 8 - x_bits_used;
-            x_bits_used = 8;
-          }
-        else if (bits_left > 0)
-          {
-            uint32_t mask = ~(-1 << (8 - x_bits_used));
-            mask = ((~mask) >> bits_left) & mask;
-            x |= (inputs[byte_pos] << (8 - x_bits_used - bits_left)) & mask;
-            x_bits_used += bits_left;
-            bits_left = 0;
-          }
-        else if (bits_left <= 0)
-          {
-            assert(!bits_left);
-            byte_pos++;
-            bits_left = PREFIX + 1;
-          }
-        if (x_bits_used == 8)
-          {
-	    *out++ = x;
-            x = x_bits_used = 0;
-          }
-      }
+        // Pack 128 x 25-bit indices into 400 bytes
+        uint32_t outpos = 0;
+        uint64_t acc = 0;
+        int acc_bits = 0;
+        for (uint32_t i = 0; i < n; ++i) {
+                acc |= ((uint64_t)inputs[i]) << acc_bits;
+                acc_bits += 25;
+                while (acc_bits >= 8) {
+                        out[outpos++] = acc & 0xFF;
+                        acc >>= 8;
+                        acc_bits -= 8;
+                }
+        }
+        if (outpos < ZCASH_SOL_LEN) {
+                // Write any remaining bits (should only happen at the end)
+                out[outpos++] = acc & 0xFF;
+        }
+        // Zero any remaining bytes (should not be needed, but for safety)
+        while (outpos < ZCASH_SOL_LEN) out[outpos++] = 0;
 }
 
 /*
-** Print on stdout a hex representation of the encoded solution as per the
-** zcash protocol specs (512 x 21-bit inputs).
-**
-** inputs	array of 32-bit inputs
-** n		number of elements in array
-*/
+/**
+ * Print on stdout a hex representation of the encoded solution as per the
+ * Equihash 192,7 protocol specs (128 x 25-bit inputs).
+ */
 void print_encoded_sol(uint32_t *inputs, uint32_t n)
 {
-    uint8_t	sol[ZCASH_SOL_LEN];
-    uint32_t	i;
+    uint8_t sol[ZCASH_SOL_LEN];
     store_encoded_sol(sol, inputs, n);
-    for (i = 0; i < sizeof (sol); i++)
-	printf("%02x", sol[i]);
+    for (uint32_t i = 0; i < ZCASH_SOL_LEN; i++)
+        printf("%02x", sol[i]);
     printf("\n");
     fflush(stdout);
 }

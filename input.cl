@@ -3,36 +3,16 @@
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 
 /*
-** Assuming NR_ROWS_LOG == 16, the hash table slots have this layout (length in
-** bytes in parens):
+** Equihash 192,7 layout (length in bytes):
+** round 0: cnt(4) i(4) Xi(22) pad(2)
+** round 1: cnt(4) i(4) i(4) Xi(19) pad(5)
+** round 2: cnt(4) i(4) i(4) i(4) Xi(16) pad(8)
+** round 3: cnt(4) i(4) i(4) i(4) i(4) Xi(13) pad(11)
+** round 4: cnt(4) i(4) i(4) i(4) i(4) i(4) Xi(10) pad(14)
+** round 5: cnt(4) i(4) i(4) i(4) i(4) i(4) i(4) Xi(7) pad(17)
+** round 6: cnt(4) i(4) i(4) i(4) i(4) i(4) i(4) i(4) Xi(4) pad(20)
 **
-** round 0, table 0: cnt(4) i(4)                     pad(0)   Xi(23.0) pad(1)
-** round 1, table 1: cnt(4) i(4)                     pad(0.5) Xi(20.5) pad(3)
-** round 2, table 0: cnt(4) i(4) i(4)                pad(0)   Xi(18.0) pad(2)
-** round 3, table 1: cnt(4) i(4) i(4)                pad(0.5) Xi(15.5) pad(4)
-** round 4, table 0: cnt(4) i(4) i(4) i(4)           pad(0)   Xi(13.0) pad(3)
-** round 5, table 1: cnt(4) i(4) i(4) i(4)           pad(0.5) Xi(10.5) pad(5)
-** round 6, table 0: cnt(4) i(4) i(4) i(4) i(4)      pad(0)   Xi( 8.0) pad(4)
-** round 7, table 1: cnt(4) i(4) i(4) i(4) i(4)      pad(0.5) Xi( 5.5) pad(6)
-** round 8, table 0: cnt(4) i(4) i(4) i(4) i(4) i(4) pad(0)   Xi( 3.0) pad(5)
-**
-** If the first byte of Xi is 0xAB then:
-** - on even rounds, 'A' is part of the colliding PREFIX, 'B' is part of Xi
-** - on odd rounds, 'A' and 'B' are both part of the colliding PREFIX, but
-**   'A' is considered redundant padding as it was used to compute the row #
-**
-** - cnt is an atomic counter keeping track of the number of used slots.
-**   it is used in the first slot only; subsequent slots replace it with
-**   4 padding bytes
-** - i encodes either the 21-bit input value (round 0) or a reference to two
-**   inputs from the previous round
-**
-** Formula for Xi length and pad length above:
-** > for i in range(9):
-** >   xi=(200-20*i-NR_ROWS_LOG)/8.; ci=8+4*((i)/2); print xi,32-ci-xi
-**
-** Note that the fractional .5-byte/4-bit padding following Xi for odd rounds
-** is the 4 most significant bits of the last byte of Xi.
+** 24-bit reduction per round, 7 rounds, 400-byte solution.
 */
 
 __constant ulong blake_iv[] =
@@ -169,17 +149,12 @@ uint ht_store(uint round, __global char *ht, uint i,
 	*(__global ulong *)(p + 0) = xi0;
 	*(__global uint *)(p + 8) = xi1;
       }
-    else if (round == 6 || round == 7)
-      {
-	// store 8 bytes
-	*(__global uint *)(p + 0) = xi0;
-	*(__global uint *)(p + 4) = (xi0 >> 32);
-      }
-    else if (round == 8)
-      {
-	// store 4 bytes
-	*(__global uint *)(p + 0) = xi0;
-      }
+		else if (round == 6 || round == 7)
+			{
+		// store 8 bytes
+		*(__global uint *)(p + 0) = xi0;
+		*(__global uint *)(p + 4) = (xi0 >> 32);
+			}
     return 0;
 }
 
@@ -359,7 +334,7 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	h[6] = (blake_state[6] ^ v[6] ^ v[14]) & 0xffff;
 
 	// store the two Xi values in the hash table
-#if ZCASH_HASH_LEN == 50
+#if ZCASH_HASH_LEN == 48
 	dropped += ht_store(0, ht, input * 2,
 		h[0],
 		h[1],
@@ -502,18 +477,13 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
 	    xi1 = (xi1 >> 8);
 	  }
       }
-    else if (round == 7 || round == 8)
-      {
-	// xor 8 bytes
-	xi0 = half_aligned_long(a, 0) ^ half_aligned_long(b, 0);
-	xi1 = 0;
-	xi2 = 0;
-	if (round == 8)
-	  {
-	    // skip padding byte
-	    xi0 = (xi0 >> 8);
-	  }
-      }
+		else if (round == 7)
+			{
+				// xor 8 bytes
+				xi0 = half_aligned_long(a, 0) ^ half_aligned_long(b, 0);
+				xi1 = 0;
+				xi2 = 0;
+			}
     // invalid solutions (which start happenning in round 5) have duplicate
     // inputs and xor to zero, so discard them
     if (!xi0 && !xi1)

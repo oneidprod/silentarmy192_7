@@ -56,14 +56,14 @@
 #define ZCASH_NONCE_LEN			32
 // Length of encoded representation of solution size
 #define ZCASH_SOLSIZE_LEN		3
-// Solution size (1344 = 0x540) represented as a compact integer, in hex
+// Solution size (400 = 0x190) represented as a compact integer, in hex for Equihash 192,7
 #define ZCASH_SOLSIZE_HEX               "fd9001"
-// Length of encoded solution (512 * 21 bits / 8 = 1344 bytes)
+// Length of encoded solution (128 * 25 bits / 8 = 400 bytes)
 #define ZCASH_SOL_LEN                   ((1 << PARAM_K) * (PREFIX + 1) / 8)
 // Last N_ZERO_BYTES of nonce must be zero due to my BLAKE2B optimization
 #define N_ZERO_BYTES			12
 // Number of bytes Zcash needs out of Blake
-#define ZCASH_HASH_LEN                  50
+#define ZCASH_HASH_LEN                  48
 // Number of wavefronts per SIMD for the Blake kernel.
 // Blake is ALU-bound (beside the atomic counter being incremented) so we need
 // at least 2 wavefronts per SIMD to hide the 2-clock latency of integer
@@ -90,7 +90,7 @@
 /*
 ** Return the offset of Xi in bytes from the beginning of the slot.
 */
-#define xi_offset_for_round(round)	(8 + ((round) / 2) * 4)
+#define xi_offset_for_round(round)	(8 + (round) * 3)
 
 // An (uncompressed) solution stores (1 << PARAM_K) 32-bit values
 #define SOL_SIZE			((1 << PARAM_K) * 4)
