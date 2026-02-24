@@ -2,6 +2,28 @@
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 
+#ifdef DEBUG_EXTRACTION
+typedef struct extraction_debug_s {
+	uint round;
+	uint thread_id;
+	uint row;
+	uint slot;
+	ulong xi0;
+	ulong xi1;
+	ulong xi2;
+	ulong xi3;
+} extraction_debug_t;
+#endif
+
+#ifdef DEBUG_EXTRACTION
+#define HT_DBG_ARGS , __global extraction_debug_t *extraction_dbg, __global uint *extraction_dbg_counter
+#define HT_DBG_PASS , extraction_dbg, extraction_dbg_counter
+#else
+#define HT_DBG_ARGS
+#define HT_DBG_PASS
+#endif
+
+
 /*
 ** Equihash 192,7 layout (length in bytes):
 ** round 0: cnt(4) i(4) Xi(22) pad(2)
@@ -59,7 +81,7 @@ void kernel_init_ht(__global char *ht, __global uint *rowCounters)
 ** Return 0 if successfully stored, or 1 if the row overflowed.
 */
 uint ht_store(uint round, __global char *ht, uint i,
-	ulong xi0, ulong xi1, ulong xi2, ulong xi3, __global uint *rowCounters)
+	ulong xi0, ulong xi1, ulong xi2, ulong xi3, __global uint *rowCounters HT_DBG_ARGS)
 {
     uint    row;
     __global char       *p;
@@ -178,7 +200,7 @@ vb = rotate((vb ^ vc), (ulong)64 - 63);
 */
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_round0(__global ulong *blake_state, __global char *ht,
-	__global uint *rowCounters, __global uint *debug)
+	__global uint *rowCounters, __global uint *debug HT_DBG_ARGS)
 {
     uint                tid = get_global_id(0);
     ulong               v[16];
@@ -339,12 +361,12 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 		h[0],
 		h[1],
 		h[2],
-		h[3], rowCounters);
+		h[3], rowCounters HT_DBG_PASS);
 	dropped += ht_store(0, ht, input * 2 + 1,
 		(h[3] >> 8) | (h[4] << (64 - 8)),
 		(h[4] >> 8) | (h[5] << (64 - 8)),
 		(h[5] >> 8) | (h[6] << (64 - 8)),
-		(h[6] >> 8), rowCounters);
+		(h[6] >> 8), rowCounters HT_DBG_PASS);
 #else
 #error "unsupported ZCASH_HASH_LEN"
 #endif
@@ -424,7 +446,7 @@ uint well_aligned_int(__global ulong *_p, uint offset)
 */
 uint xor_and_store(uint round, __global char *ht_dst, uint row,
 	uint slot_a, uint slot_b, __global ulong *a, __global ulong *b,
-	__global uint *rowCounters)
+	__global uint *rowCounters HT_DBG_ARGS)
 {
     ulong xi0, xi1, xi2;
 #if NR_ROWS_LOG >= 16 && NR_ROWS_LOG <= 20
@@ -491,8 +513,8 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
 #else
 
 #endif
-    return ht_store(round, ht_dst, ENCODE_INPUTS(row, slot_a, slot_b),
-	    xi0, xi1, xi2, 0, rowCounters);
+	return ht_store(round, ht_dst, ENCODE_INPUTS(row, slot_a, slot_b),
+		xi0, xi1, xi2, 0, rowCounters HT_DBG_PASS);
 }
 
 /*
@@ -507,7 +529,7 @@ void equihash_round(uint round,
 	__local uint *collisionsData,
 	__local uint *collisionsNum,
 	__global uint *rowCountersSrc,
-	__global uint *rowCountersDst)
+	__global uint *rowCountersDst HT_DBG_ARGS)
 {
     uint		tid = get_global_id(0);
     uint		tlid = get_local_id(0);
@@ -629,8 +651,8 @@ part2:
 	    xi_offset;
 	a = (__global ulong *)(ptr + i * SLOT_LEN);
 	b = (__global ulong *)(ptr + j * SLOT_LEN);
-	dropped_stor += xor_and_store(round, ht_dst, collisionThreadId, i, j,
-		a, b, rowCountersDst);
+		dropped_stor += xor_and_store(round, ht_dst, collisionThreadId, i, j,
+			a, b, rowCountersDst HT_DBG_PASS);
       }
 #ifdef ENABLE_DEBUG
     debug[tid * 2] = dropped_coll;
@@ -645,13 +667,13 @@ part2:
 __kernel __attribute__((reqd_work_group_size(64, 1, 1))) \
 void kernel_round ## N(__global char *ht_src, __global char *ht_dst, \
 	__global uint *rowCountersSrc, __global uint *rowCountersDst, \
-       	__global uint *debug) \
+	__global uint *debug HT_DBG_ARGS) \
 { \
     __local uchar first_words_data[(NR_SLOTS+2)*64]; \
     __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64]; \
     __local uint    collisionsNum; \
-    equihash_round(N, ht_src, ht_dst, debug, first_words_data, collisionsData, \
-	    &collisionsNum, rowCountersSrc, rowCountersDst); \
+	equihash_round(N, ht_src, ht_dst, debug, first_words_data, collisionsData, \
+		&collisionsNum, rowCountersSrc, rowCountersDst HT_DBG_PASS); \
 }
 KERNEL_ROUND(1)
 KERNEL_ROUND(2)
@@ -662,15 +684,15 @@ KERNEL_ROUND(5)
 // kernel_round6 for 192,7 - final round takes an extra argument, "sols"
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_round6(__global char *ht_src, __global char *ht_dst,
-    __global uint *rowCountersSrc, __global uint *rowCountersDst,
-    __global uint *debug, __global sols_t *sols)
+	__global uint *rowCountersSrc, __global uint *rowCountersDst,
+	__global uint *debug, __global sols_t *sols HT_DBG_ARGS)
 {
     uint            tid = get_global_id(0);
     __local uchar   first_words_data[(NR_SLOTS+2)*64];
     __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64];
     __local uint    collisionsNum;
-    equihash_round(6, ht_src, ht_dst, debug, first_words_data, collisionsData,
-        &collisionsNum, rowCountersSrc, rowCountersDst);
+	equihash_round(6, ht_src, ht_dst, debug, first_words_data, collisionsData,
+		&collisionsNum, rowCountersSrc, rowCountersDst HT_DBG_PASS);
     if (!tid)
         sols->nr = sols->likely_invalids = 0;
 }

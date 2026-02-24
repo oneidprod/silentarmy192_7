@@ -89,6 +89,8 @@
 
 // Optional features
 #define ENABLE_DEBUG
+// Enable kernel-side extraction debug (host must allocate buffers)
+#define DEBUG_EXTRACTION
 
 /*
 ** Return the offset of Xi in bytes from the beginning of the slot.
