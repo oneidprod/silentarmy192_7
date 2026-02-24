@@ -1,5 +1,9 @@
 #include "param.h"
 
+/* Enable extra kernel-side diagnostics: extraction debug and per-round counters */
+#define DEBUG_EXTRACTION
+
+
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 
 #ifdef DEBUG_EXTRACTION
@@ -25,6 +29,7 @@ typedef struct extraction_debug_s {
 #endif
 
 /* Per-round counters (always enabled for diagnostics) */
+#define PER_ROUND_COUNTS
 #define ROUND_CNT_ARGS , __global uint *round_collisions, __global uint *round_stored
 #define ROUND_CNT_PASS , round_collisions, round_stored
 
@@ -563,6 +568,8 @@ void equihash_round(uint round,
 	__global uint *rowCountersSrc,
 	__global uint *rowCountersDst ROUND_CNT_ARGS HT_DBG_ARGS)
 {
+	/* Debug: mark that this round kernel executed (helps detect arg/binding issues) */
+	atomic_inc(round_collisions + round);
     uint		tid = get_global_id(0);
     uint		tlid = get_local_id(0);
     __global char	*p;

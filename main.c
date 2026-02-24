@@ -933,11 +933,11 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
         check_clSetKernelArg(k_rounds[round], 1, &buf_ht[round % 2]);
         check_clSetKernelArg(k_rounds[round], 2, &rowCounters[round % 2]);
         check_clSetKernelArg(k_rounds[round], 3, &buf_dbg);
-        check_clSetKernelArg(k_rounds[round], 4, &buf_extraction_dbg);
-                check_clSetKernelArg(k_rounds[round], 5, &buf_extraction_dbg_counter);
-                /* per-round counters: collisions and stored */
-                check_clSetKernelArg(k_rounds[round], 6, &buf_round_collisions);
-                check_clSetKernelArg(k_rounds[round], 7, &buf_round_stored);
+        /* per-round counters: collisions and stored (kernel expects these before extraction debug) */
+        check_clSetKernelArg(k_rounds[round], 4, &buf_round_collisions);
+        check_clSetKernelArg(k_rounds[round], 5, &buf_round_stored);
+        check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg);
+        check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg_counter);
         global_ws = select_work_size_blake();
 	  }
 	else
@@ -950,19 +950,19 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                 if (round == PARAM_K - 1)
                     {
                         check_clSetKernelArg(k_rounds[round], 5, &buf_sols);
-                        check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg);
-                        check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg_counter);
-                        /* next args: per-round counters */
-                        check_clSetKernelArg(k_rounds[round], 8, &buf_round_collisions);
-                        check_clSetKernelArg(k_rounds[round], 9, &buf_round_stored);
+                        /* per-round counters come next */
+                        check_clSetKernelArg(k_rounds[round], 6, &buf_round_collisions);
+                        check_clSetKernelArg(k_rounds[round], 7, &buf_round_stored);
+                        check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg);
+                        check_clSetKernelArg(k_rounds[round], 9, &buf_extraction_dbg_counter);
                     }
                 else
                     {
-                        check_clSetKernelArg(k_rounds[round], 5, &buf_extraction_dbg);
-                        check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg_counter);
-                        /* next args: per-round counters */
-                        check_clSetKernelArg(k_rounds[round], 7, &buf_round_collisions);
-                        check_clSetKernelArg(k_rounds[round], 8, &buf_round_stored);
+                        /* per-round counters come before extraction debug */
+                        check_clSetKernelArg(k_rounds[round], 5, &buf_round_collisions);
+                        check_clSetKernelArg(k_rounds[round], 6, &buf_round_stored);
+                        check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg);
+                        check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg_counter);
                     }
                 global_ws = NR_ROWS;
 	  }
