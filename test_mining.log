@@ -1,0 +1,65 @@
+/home/mine/silentarmy192_7/./silentarmy:191: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def reconnect(self):
+/home/mine/silentarmy192_7/./silentarmy:210: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def show_stats(self):
+/home/mine/silentarmy192_7/./silentarmy:308: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def start_solvers(self, devid):
+DEBUG:asyncio:Get address info pooly.ca:3050, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver' stdin=<pipe> stdout=stderr=<pipe>
+DEBUG:asyncio:process '/home/mine/silentarmy192_7/sa-solver' created: pid 368541
+DEBUG:asyncio:Write pipe 8 connected: (<_UnixWritePipeTransport fd=8 idle bufsize=0>, <WriteSubprocessPipeProto fd=0 pipe=<_UnixWritePipeTransport fd=8 idle bufsize=0>>)
+DEBUG:asyncio:Read pipe 6 connected: (<_UnixReadPipeTransport fd=6 polling>, <ReadSubprocessPipeProto fd=1 pipe=<_UnixReadPipeTransport fd=6 polling>>)
+INFO:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver': <_UnixSubprocessTransport pid=368541 running stdin=<_UnixWritePipeTransport fd=8 idle bufsize=0> stdout=<_UnixReadPipeTransport fd=6 polling>>
+DEBUG:asyncio:Getting address info pooly.ca:3050, type=<SocketKind.SOCK_STREAM: 1> took 54.948ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('51.79.44.22', 3050))]
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 33646), raddr=('51.79.44.22', 3050)> connected to pooly.ca:3050: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f09b58cc7c0>)
+Connecting to pooly.ca:3050
+Solver 0.0: launching
+Successfully connected to pooly.ca:3050
+Received target 0a5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe97
+Received job "000012a7"
+Stratum server sent us the first job
+Mining on 1 device
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 0.0 sol/s [dev0 0.0] 2 shares
+Total 5.6 sol/s [dev0 5.6] 5 shares
+Total 5.1 sol/s [dev0 5.6] 5 shares
+Total 4.7 sol/s [dev0 5.6] 5 shares
+Total 4.3 sol/s [dev0 5.6] 5 shares
+Total 4.0 sol/s [dev0 5.6] 5 shares
+Total 3.7 sol/s [dev0 5.6] 5 shares
+Total 3.5 sol/s [dev0 5.6] 5 shares
+Total 3.3 sol/s [dev0 5.6] 5 shares
+Total 3.1 sol/s [dev0 5.6] 5 shares
+Total 2.9 sol/s [dev0 5.6] 5 shares
+Total 2.8 sol/s [dev0 0.0] 5 shares
+Total 5.2 sol/s [dev0 5.4] 9 shares
+Total 5.0 sol/s [dev0 5.4] 9 shares
+Total 4.8 sol/s [dev0 5.4] 9 shares
+Total 4.6 sol/s [dev0 5.4] 9 shares
+Total 4.4 sol/s [dev0 5.4] 9 shares
+Total 4.2 sol/s [dev0 5.4] 9 shares
+Total 4.1 sol/s [dev0 5.4] 9 shares
+Total 3.9 sol/s [dev0 5.4] 9 shares
+Total 3.8 sol/s [dev0 5.4] 9 shares
+Total 3.7 sol/s [dev0 5.4] 9 shares
+Total 3.7 sol/s [dev0 0.0] 9 shares
+Total 3.7 sol/s [dev0 0.0] 9 shares
+Total 5.5 sol/s [dev0 5.6] 11 shares
+Total 5.5 sol/s [dev0 5.6] 11 shares
+Total 5.5 sol/s [dev0 5.6] 11 shares
+Total 7.4 sol/s [dev0 11.2] 12 shares
+Total 270.0 sol/s [dev0 799.1] 320 shares
+Total 536.4 sol/s [dev0 1598.4] 642 shares
+Total 804.7 sol/s [dev0 2403.7] 987 shares
+Total 1078.6 sol/s [dev0 3231.4] 1334 shares
+Total 1352.4 sol/s [dev0 4053.4] 1688 shares
+Total 1632.0 sol/s [dev0 4892.9] 2009 shares
+Total 1915.2 sol/s [dev0 5738.4] 2321 shares

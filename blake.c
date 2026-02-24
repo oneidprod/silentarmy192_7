@@ -39,8 +39,10 @@ void zcash_blake2b_init(blake2b_state_t *st, uint8_t hash_len,
     st->h[0] = blake2b_iv[0] ^ (0x01010000 | hash_len);
     for (uint32_t i = 1; i <= 5; i++)
         st->h[i] = blake2b_iv[i];
-    st->h[6] = blake2b_iv[6] ^ *(uint64_t *)"ZERO_PoW";
-    st->h[7] = blake2b_iv[7] ^ (((uint64_t)k << 32) | n);
+    // Use correct personalization string for Zero coin Equihash 192,7: "ZERO_PoW" + 192 + 7 (LE)
+    uint8_t pers[16] = {'Z','E','R','O','_','P','o','W', 0xc0,0x00,0x00,0x00, 0x07,0x00,0x00,0x00};
+    st->h[6] = blake2b_iv[6] ^ ((uint64_t *)pers)[0];
+    st->h[7] = blake2b_iv[7] ^ ((uint64_t *)pers)[1];
     st->bytes = 0;
 }
 

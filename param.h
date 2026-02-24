@@ -5,7 +5,7 @@
 // Approximate log base 2 of number of elements in hash tables
 #define APX_NR_ELMS_LOG                 (PREFIX + 1)
 // Number of rows and slots is affected by this; 20 offers the best performance
-#define NR_ROWS_LOG                     20
+#define NR_ROWS_LOG                     18
 
 // Setting this to 1 might make SILENTARMY faster, see TROUBLESHOOTING.md
 #define OPTIM_SIMPLIFY_ROUND		1
@@ -30,8 +30,10 @@
 //
 // Even (as opposed to odd) values of OVERHEAD sometimes significantly decrease
 // performance as they cause VRAM channel conflicts.
-#if NR_ROWS_LOG == 16
-#define OVERHEAD                        3
+#if NR_ROWS_LOG == 10
+#define OVERHEAD                        1
+#elif NR_ROWS_LOG == 12
+#define OVERHEAD                        1
 #elif NR_ROWS_LOG == 18
 #define OVERHEAD                        3
 #elif NR_ROWS_LOG == 19
@@ -42,12 +44,13 @@
 #define OVERHEAD                        1 //1
 #endif
 
-#define NR_ROWS                         (1 << NR_ROWS_LOG)
-#define NR_SLOTS            ((1 << (APX_NR_ELMS_LOG - NR_ROWS_LOG)) * OVERHEAD)
+#define NR_ROWS                         (1ULL << NR_ROWS_LOG)
+// Number of slots per row (dynamic, based on table size and overhead)
+#define NR_SLOTS 8ULL
 // Length of 1 element (slot) in bytes
-#define SLOT_LEN                        32
+#define SLOT_LEN                        32ULL
 // Total size of hash table
-#define HT_SIZE				(NR_ROWS * NR_SLOTS * SLOT_LEN)
+#define HT_SIZE (NR_ROWS * NR_SLOTS * SLOT_LEN)
 // Length of Zcash block header, nonce (part of header)
 #define ZCASH_BLOCK_HEADER_LEN		140
 // Offset of nTime in header
@@ -85,7 +88,7 @@
 #endif
 
 // Optional features
-#undef ENABLE_DEBUG
+#define ENABLE_DEBUG
 
 /*
 ** Return the offset of Xi in bytes from the beginning of the slot.

@@ -26,7 +26,7 @@ typedef uint32_t	uint;
 #define MIN(A, B)	(((A) < (B)) ? (A) : (B))
 #define MAX(A, B)	(((A) > (B)) ? (A) : (B))
 
-int		verbose = 0;
+int		verbose = 2; // elevated for diagnostics
 uint32_t	show_encoded = 0;
 uint64_t	nr_nonces = 1;
 uint32_t	do_list_devices = 0;
@@ -503,15 +503,17 @@ void init_ht(cl_command_queue queue, cl_kernel k_init_ht, cl_mem buf_ht,
     status = clSetKernelArg(k_init_ht, 0, sizeof (buf_ht), &buf_ht);
     clSetKernelArg(k_init_ht, 1, sizeof (rowCounters), &rowCounters);
     if (status != CL_SUCCESS)
-	fatal("clSetKernelArg (%d)\n", status);
+    	fatal("clSetKernelArg (%d)\n", status);
+    fprintf(stderr, "init_ht: enqueue global=%zu local=%zu\n", global_ws, local_ws);
+    fflush(stderr);
     check_clEnqueueNDRangeKernel(queue, k_init_ht,
-	    1,		// cl_uint	work_dim
-	    NULL,	// size_t	*global_work_offset
-	    &global_ws,	// size_t	*global_work_size
-	    &local_ws,	// size_t	*local_work_size
-	    0,		// cl_uint	num_events_in_wait_list
-	    NULL,	// cl_event	*event_wait_list
-	    NULL);	// cl_event	*event
+    	1, 		// cl_uint	work_dim
+    	NULL, 	// size_t	*global_work_offset
+    	&global_ws,	// size_t	*global_work_size
+    	NULL,	// size_t	*local_work_size (let driver pick)
+    	0, 		// cl_uint	num_events_in_wait_list
+    	NULL, 	// cl_event	*event_wait_list
+    	NULL); 	// cl_event	*event
 }
 
 /*
@@ -1099,7 +1101,9 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     cl_mem              buf_ht[2], buf_sols, buf_dbg, rowCounters[2];
     void                *dbg = NULL;
 #ifdef ENABLE_DEBUG
-    size_t              dbg_size = NR_ROWS * sizeof (debug_t);
+    // Each kernel thread writes two debug_t slots (debug[tid*2], debug[tid*2+1]).
+    // Allocate for the maximum possible global work size (NR_ROWS).
+    size_t              dbg_size = 2 * NR_ROWS * sizeof (debug_t);
 #else
     size_t              dbg_size = 1 * sizeof (debug_t);
 #endif
