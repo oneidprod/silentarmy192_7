@@ -195,6 +195,25 @@ void hexdump(uint8_t *a, uint32_t a_len)
         fprintf(stderr, "%02x", a[i]);
 }
 
+static int cmp_exdbg_row(const void *pa, const void *pb)
+{
+    const extraction_debug_t *a = pa;
+    const extraction_debug_t *b = pb;
+    if (a->row < b->row) return -1;
+    if (a->row > b->row) return 1;
+    return 0;
+}
+
+typedef struct { uint32_t row; uint32_t cnt; } rowcnt_t;
+static int cmp_rowcnt_desc(const void *pa, const void *pb)
+{
+    const rowcnt_t *a = pa;
+    const rowcnt_t *b = pb;
+    if (a->cnt < b->cnt) return 1;
+    if (a->cnt > b->cnt) return -1;
+    return 0;
+}
+
 char *s_hexdump(const void *_a, uint32_t a_len)
 {
     const uint8_t	*a = _a;
@@ -867,10 +886,10 @@ unsigned get_value(unsigned *data, unsigned row)
 */
 uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
     cl_kernel k_init_ht, cl_kernel *k_rounds, cl_kernel k_sols,
-    cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, cl_mem buf_extraction_dbg, cl_mem buf_extraction_dbg_counter, size_t dbg_size,
-	uint8_t *header, size_t header_len, char do_increment,
-	size_t fixed_nonce_bytes, uint8_t *target, char *job_id,
-	uint32_t *shares, cl_mem *rowCounters)
+    cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, cl_mem buf_extraction_dbg, cl_mem buf_extraction_dbg_counter, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored, size_t dbg_size,
+    uint8_t *header, size_t header_len, char do_increment,
+    size_t fixed_nonce_bytes, uint8_t *target, char *job_id,
+    uint32_t *shares, cl_mem *rowCounters)
 {
     blake2b_state_t     blake;
     cl_mem              buf_blake_st;
@@ -915,7 +934,10 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
         check_clSetKernelArg(k_rounds[round], 2, &rowCounters[round % 2]);
         check_clSetKernelArg(k_rounds[round], 3, &buf_dbg);
         check_clSetKernelArg(k_rounds[round], 4, &buf_extraction_dbg);
-        check_clSetKernelArg(k_rounds[round], 5, &buf_extraction_dbg_counter);
+                check_clSetKernelArg(k_rounds[round], 5, &buf_extraction_dbg_counter);
+                /* per-round counters: collisions and stored */
+                check_clSetKernelArg(k_rounds[round], 6, &buf_round_collisions);
+                check_clSetKernelArg(k_rounds[round], 7, &buf_round_stored);
         global_ws = select_work_size_blake();
 	  }
 	else
@@ -930,11 +952,17 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                         check_clSetKernelArg(k_rounds[round], 5, &buf_sols);
                         check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg);
                         check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg_counter);
+                        /* next args: per-round counters */
+                        check_clSetKernelArg(k_rounds[round], 8, &buf_round_collisions);
+                        check_clSetKernelArg(k_rounds[round], 9, &buf_round_stored);
                     }
                 else
                     {
                         check_clSetKernelArg(k_rounds[round], 5, &buf_extraction_dbg);
                         check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg_counter);
+                        /* next args: per-round counters */
+                        check_clSetKernelArg(k_rounds[round], 7, &buf_round_collisions);
+                        check_clSetKernelArg(k_rounds[round], 8, &buf_round_stored);
                     }
                 global_ws = NR_ROWS;
 	  }
@@ -949,6 +977,7 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
     check_clSetKernelArg(k_sols, 2, &buf_sols);
     check_clSetKernelArg(k_sols, 3, &rowCounters[0]);
     check_clSetKernelArg(k_sols, 4, &rowCounters[1]);
+    check_clSetKernelArg(k_sols, 5, &buf_potential_cnt);
     global_ws = NR_ROWS;
     check_clEnqueueNDRangeKernel(queue, k_sols, 1, NULL,
 	    &global_ws, &local_work_size, 0, NULL, NULL);
@@ -1085,7 +1114,7 @@ void mining_parse_job(char *str, uint8_t *target, size_t target_len,
 void mining_mode(cl_context ctx, cl_command_queue queue,
     cl_kernel k_init_ht, cl_kernel *k_rounds, cl_kernel k_sols,
     cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, size_t dbg_size,
-    uint8_t *header, cl_mem *rowCounters, cl_mem buf_extraction_dbg, size_t extraction_dbg_size, cl_mem buf_extraction_dbg_counter, size_t extraction_dbg_counter_size)
+    uint8_t *header, cl_mem *rowCounters, cl_mem buf_extraction_dbg, size_t extraction_dbg_size, cl_mem buf_extraction_dbg_counter, size_t extraction_dbg_counter_size, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored)
 {
     char		line[4096];
     uint8_t		target[SHA256_DIGEST_SIZE];
@@ -1107,7 +1136,7 @@ void mining_mode(cl_context ctx, cl_command_queue queue,
                     header, ZCASH_BLOCK_HEADER_LEN,
                     &fixed_nonce_bytes);
         total += solve_equihash(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, dbg_size, header, ZCASH_BLOCK_HEADER_LEN, 1,
+            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, ZCASH_BLOCK_HEADER_LEN, 1,
             fixed_nonce_bytes, target, job_id, &shares, rowCounters);
         total_shares += shares;
         if ((t1 = now()) > t0 + status_period)
@@ -1154,25 +1183,190 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
         CL_MEM_COPY_HOST_PTR, extraction_dbg_size, extraction_dbg);
     buf_extraction_dbg_counter = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, extraction_dbg_counter_size, extraction_dbg_counter);
+    /* potential matches counter (kernel_sols) */
+    uint32_t *potential_cnt_host = calloc(1, sizeof(uint32_t));
+    if (!potential_cnt_host) fatal("malloc: %s\n", strerror(errno));
+    cl_mem buf_potential_cnt = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE |
+        CL_MEM_COPY_HOST_PTR, sizeof(uint32_t), potential_cnt_host);
+    /* per-round counters (host + device) */
+    uint32_t *round_collisions_host = calloc(PARAM_K, sizeof(uint32_t));
+    uint32_t *round_stored_host = calloc(PARAM_K, sizeof(uint32_t));
+    if (!round_collisions_host || !round_stored_host) fatal("malloc: %s\n", strerror(errno));
+    cl_mem buf_round_collisions = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        PARAM_K * sizeof(uint32_t), round_collisions_host);
+    cl_mem buf_round_stored = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        PARAM_K * sizeof(uint32_t), round_stored_host);
     buf_ht[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_ht[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_sols = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeof (sols_t), NULL);
     rowCounters[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, NR_ROWS, NULL);
     rowCounters[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, NR_ROWS, NULL);
     if (mining)
-    	mining_mode(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-        buf_sols, buf_dbg, dbg_size, header, rowCounters, buf_extraction_dbg, extraction_dbg_size, buf_extraction_dbg_counter, extraction_dbg_counter_size);
+        mining_mode(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
+        buf_sols, buf_dbg, dbg_size, header, rowCounters, buf_extraction_dbg, extraction_dbg_size, buf_extraction_dbg_counter, extraction_dbg_counter_size, buf_potential_cnt, buf_round_collisions, buf_round_stored);
     fprintf(stderr, "Running...\n");
     total = 0;
     uint64_t t0 = now();
     // Solve Equihash for a few nonces
     for (nonce = 0; nonce < nr_nonces; nonce++)
-    	total += solve_equihash(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-    		buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, dbg_size, header, header_len, !!nonce,
-    		0, NULL, NULL, NULL, rowCounters);
+        total += solve_equihash(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
+            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, header_len, !!nonce,
+            0, NULL, NULL, NULL, rowCounters);
     uint64_t t1 = now();
     fprintf(stderr, "Total %" PRId64 " solutions in %.1f ms (%.1f Sol/s)\n",
 	    total, (t1 - t0) / 1e3, total / ((t1 - t0) / 1e6));
+    /* Read back extraction debug counter and sample entries */
+    {
+        uint32_t counter = 0;
+        check_clEnqueueReadBuffer(queue, buf_extraction_dbg_counter, CL_TRUE,
+            0, sizeof(counter), &counter, 0, NULL, NULL);
+        fprintf(stderr, "extraction_dbg_counter = %u\n", counter);
+        /* read potential match counter from final table */
+        if (buf_potential_cnt) {
+            uint32_t pot = 0;
+            check_clEnqueueReadBuffer(queue, buf_potential_cnt, CL_TRUE,
+                0, sizeof(pot), &pot, 0, NULL, NULL);
+            fprintf(stderr, "potential_matches_final_table = %u\n", pot);
+        }
+        /* Read per-round counters */
+        fprintf(stderr, "debug: buf_round_collisions=%p buf_round_stored=%p\n", (void*)buf_round_collisions, (void*)buf_round_stored);
+        if (buf_round_collisions) {
+            check_clEnqueueReadBuffer(queue, buf_round_collisions, CL_TRUE,
+                0, PARAM_K * sizeof(uint32_t), round_collisions_host, 0, NULL, NULL);
+            check_clEnqueueReadBuffer(queue, buf_round_stored, CL_TRUE,
+                0, PARAM_K * sizeof(uint32_t), round_stored_host, 0, NULL, NULL);
+            fprintf(stderr, "Per-round counters:\n");
+            for (unsigned r = 0; r < PARAM_K; r++) {
+                fprintf(stderr, " round %u: collisions=%u stored=%u\n", r, round_collisions_host[r], round_stored_host[r]);
+            }
+        }
+        if (counter > 0)
+        {
+            size_t to_read = counter;
+            if (to_read > EXTRACTION_DEBUG_ENTRIES)
+                to_read = EXTRACTION_DEBUG_ENTRIES;
+            extraction_debug_t *sample = malloc(to_read * sizeof (*sample));
+            if (!sample) fatal("malloc: %s\n", strerror(errno));
+            check_clEnqueueReadBuffer(queue, buf_extraction_dbg, CL_TRUE,
+                0, to_read * sizeof (*sample), sample, 0, NULL, NULL);
+            size_t show = to_read < 32 ? to_read : 32;
+            for (size_t i = 0; i < show; i++)
+            {
+                fprintf(stderr, "DBG[%zu]: round=%u tid=%u row=%u slot=%u xi0=%016" PRIx64 " xi1=%016" PRIx64 " xi2=%016" PRIx64 " xi3=%016" PRIx64 "\n",
+                    i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot,
+                    (uint64_t)sample[i].xi0, (uint64_t)sample[i].xi1, (uint64_t)sample[i].xi2, (uint64_t)sample[i].xi3);
+            }
+            /* Quick validation: try multiple xi0 reconstructions and compare rows */
+            {
+                size_t matches_a = 0, matches_b = 0, matches_c = 0;
+                for (size_t i = 0; i < to_read; i++) {
+                    uint32_t round = sample[i].round;
+                    /* extraction now contains original xi0..xi3 (pre-shift) */
+                    uint64_t o0_a = (uint64_t)sample[i].xi0;
+                    /* method B: try byte-swap (endianness) */
+                    uint64_t o0_b = __builtin_bswap64(o0_a);
+                    /* method C: try using xi1 as alternative (fallback) */
+                    uint64_t o0_c = (uint64_t)sample[i].xi1;
+                    uint32_t row_a = 0, row_b = 0, row_c = 0;
+#if NR_ROWS_LOG == 16
+                    if (!(round % 2)) {
+                        row_a = (uint32_t)(o0_a & 0xffff);
+                        row_b = (uint32_t)(o0_b & 0xffff);
+                        row_c = (uint32_t)(o0_c & 0xffff);
+                    } else {
+                        row_a = (uint32_t)(((o0_a & 0xf00) << 4) | ((o0_a & 0xf00000) >> 12) |
+                            ((o0_a & 0xf) << 4) | ((o0_a & 0xf000) >> 12));
+                        row_b = (uint32_t)(((o0_b & 0xf00) << 4) | ((o0_b & 0xf00000) >> 12) |
+                            ((o0_b & 0xf) << 4) | ((o0_b & 0xf000) >> 12));
+                        row_c = (uint32_t)(((o0_c & 0xf00) << 4) | ((o0_c & 0xf00000) >> 12) |
+                            ((o0_c & 0xf) << 4) | ((o0_c & 0xf000) >> 12));
+                    }
+#elif NR_ROWS_LOG == 18
+                    if (!(round % 2)) {
+                        row_a = (uint32_t)((o0_a & 0xffff) | ((o0_a & 0xc00000) >> 6));
+                        row_b = (uint32_t)((o0_b & 0xffff) | ((o0_b & 0xc00000) >> 6));
+                        row_c = (uint32_t)((o0_c & 0xffff) | ((o0_c & 0xc00000) >> 6));
+                    } else {
+                        row_a = (uint32_t)(((o0_a & 0xc0000) >> 2) |
+                            ((o0_a & 0xf00) << 4) | ((o0_a & 0xf00000) >> 12) |
+                            ((o0_a & 0xf) << 4) | ((o0_a & 0xf000) >> 12));
+                        row_b = (uint32_t)(((o0_b & 0xc0000) >> 2) |
+                            ((o0_b & 0xf00) << 4) | ((o0_b & 0xf00000) >> 12) |
+                            ((o0_b & 0xf) << 4) | ((o0_b & 0xf000) >> 12));
+                        row_c = (uint32_t)(((o0_c & 0xc0000) >> 2) |
+                            ((o0_c & 0xf00) << 4) | ((o0_c & 0xf00000) >> 12) |
+                            ((o0_c & 0xf) << 4) | ((o0_c & 0xf000) >> 12));
+                    }
+#elif NR_ROWS_LOG == 19
+                    if (!(round % 2)) {
+                        row_a = (uint32_t)((o0_a & 0xffff) | ((o0_a & 0xe00000) >> 5));
+                        row_b = (uint32_t)((o0_b & 0xffff) | ((o0_b & 0xe00000) >> 5));
+                        row_c = (uint32_t)((o0_c & 0xffff) | ((o0_c & 0xe00000) >> 5));
+                    } else {
+                        row_a = (uint32_t)(((o0_a & 0xe0000) >> 1) |
+                            ((o0_a & 0xf00) << 4) | ((o0_a & 0xf00000) >> 12) |
+                            ((o0_a & 0xf) << 4) | ((o0_a & 0xf000) >> 12));
+                        row_b = (uint32_t)(((o0_b & 0xe0000) >> 1) |
+                            ((o0_b & 0xf00) << 4) | ((o0_b & 0xf00000) >> 12) |
+                            ((o0_b & 0xf) << 4) | ((o0_b & 0xf000) >> 12));
+                        row_c = (uint32_t)(((o0_c & 0xe0000) >> 1) |
+                            ((o0_c & 0xf00) << 4) | ((o0_c & 0xf00000) >> 12) |
+                            ((o0_c & 0xf) << 4) | ((o0_c & 0xf000) >> 12));
+                    }
+#elif NR_ROWS_LOG == 20
+                    if (!(round % 2)) {
+                        row_a = (uint32_t)((o0_a & 0xffff) | ((o0_a & 0xf00000) >> 4));
+                        row_b = (uint32_t)((o0_b & 0xffff) | ((o0_b & 0xf00000) >> 4));
+                        row_c = (uint32_t)((o0_c & 0xffff) | ((o0_c & 0xf00000) >> 4));
+                    } else {
+                        row_a = (uint32_t)(((o0_a & 0xf0000) >> 0) |
+                            ((o0_a & 0xf00) << 4) | ((o0_a & 0xf00000) >> 12) |
+                            ((o0_a & 0xf) << 4) | ((o0_a & 0xf000) >> 12));
+                        row_b = (uint32_t)(((o0_b & 0xf0000) >> 0) |
+                            ((o0_b & 0xf00) << 4) | ((o0_b & 0xf00000) >> 12) |
+                            ((o0_b & 0xf) << 4) | ((o0_b & 0xf000) >> 12));
+                        row_c = (uint32_t)(((o0_c & 0xf0000) >> 0) |
+                            ((o0_c & 0xf00) << 4) | ((o0_c & 0xf00000) >> 12) |
+                            ((o0_c & 0xf) << 4) | ((o0_c & 0xf000) >> 12));
+                    }
+#else
+                    /* Unknown NR_ROWS_LOG: skip */
+#endif
+                    if (row_a == sample[i].row) matches_a++;
+                    if (row_b == sample[i].row) matches_b++;
+                    if (row_c == sample[i].row) matches_c++;
+                }
+                fprintf(stderr, "Row reconstruction matches: methodA=%zu methodB=%zu methodC=%zu of %zu samples\n",
+                    matches_a, matches_b, matches_c, to_read);
+            }
+            /* Build frequency histogram of rows within sampled entries */
+            qsort(sample, to_read, sizeof (*sample), cmp_exdbg_row);
+            /* Count runs */
+            uint32_t best_rows = 10;
+            rowcnt_t *rows = malloc(to_read * sizeof (*rows));
+            if (!rows) fatal("malloc: %s\n", strerror(errno));
+            size_t r = 0;
+            size_t i = 0;
+            while (i < to_read)
+            {
+                uint32_t cur = sample[i].row;
+                size_t j = i + 1;
+                while (j < to_read && sample[j].row == cur) j++;
+                rows[r].row = cur;
+                rows[r].cnt = j - i;
+                r++;
+                i = j;
+            }
+            /* Sort by count desc */
+            qsort(rows, r, sizeof (*rows), cmp_rowcnt_desc);
+            size_t top = r < best_rows ? r : best_rows;
+            fprintf(stderr, "Top %zu rows in sample:\n", top);
+            for (size_t k = 0; k < top; k++)
+                fprintf(stderr, " row %u: %u entries\n", rows[k].row, rows[k].cnt);
+            free(rows);
+            free(sample);
+        }
+    }
     // Clean up
     if (dbg)
         free(dbg);
@@ -1184,10 +1378,20 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     clReleaseMemObject(buf_extraction_dbg);
     clReleaseMemObject(buf_extraction_dbg_counter);
     clReleaseMemObject(buf_sols);
+    clReleaseMemObject(buf_potential_cnt);
+    clReleaseMemObject(buf_round_collisions);
+    clReleaseMemObject(buf_round_stored);
     clReleaseMemObject(buf_ht[0]);
     clReleaseMemObject(buf_ht[1]);
     clReleaseMemObject(rowCounters[0]);
     clReleaseMemObject(rowCounters[1]);
+    if (potential_cnt_host)
+        free(potential_cnt_host);
+    /* free per-round host buffers */
+    if (round_collisions_host)
+        free(round_collisions_host);
+    if (round_stored_host)
+        free(round_stored_host);
 }
 
 /*

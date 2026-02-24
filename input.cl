@@ -13,6 +13,7 @@ typedef struct extraction_debug_s {
 	ulong xi2;
 	ulong xi3;
 } extraction_debug_t;
+#define EXTRACTION_DEBUG_ENTRIES 4096
 #endif
 
 #ifdef DEBUG_EXTRACTION
@@ -22,6 +23,10 @@ typedef struct extraction_debug_s {
 #define HT_DBG_ARGS
 #define HT_DBG_PASS
 #endif
+
+/* Per-round counters (always enabled for diagnostics) */
+#define ROUND_CNT_ARGS , __global uint *round_collisions, __global uint *round_stored
+#define ROUND_CNT_PASS , round_collisions, round_stored
 
 
 /*
@@ -81,7 +86,7 @@ void kernel_init_ht(__global char *ht, __global uint *rowCounters)
 ** Return 0 if successfully stored, or 1 if the row overflowed.
 */
 uint ht_store(uint round, __global char *ht, uint i,
-	ulong xi0, ulong xi1, ulong xi2, ulong xi3, __global uint *rowCounters HT_DBG_ARGS)
+	ulong xi0, ulong xi1, ulong xi2, ulong xi3, __global uint *rowCounters ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     uint    row;
     __global char       *p;
@@ -120,16 +125,23 @@ uint ht_store(uint round, __global char *ht, uint i,
 #else
 
 #endif
-    xi0 = (xi0 >> 16) | (xi1 << (64 - 16));
-    xi1 = (xi1 >> 16) | (xi2 << (64 - 16));
-    xi2 = (xi2 >> 16) | (xi3 << (64 - 16));
+	/* Keep originals for extraction debugging before the 16-bit rotation */
+#ifdef DEBUG_EXTRACTION
+	ulong dbg_xi0 = xi0;
+	ulong dbg_xi1 = xi1;
+	ulong dbg_xi2 = xi2;
+	ulong dbg_xi3 = xi3;
+#endif
+	xi0 = (xi0 >> 16) | (xi1 << (64 - 16));
+	xi1 = (xi1 >> 16) | (xi2 << (64 - 16));
+	xi2 = (xi2 >> 16) | (xi3 << (64 - 16));
     p = ht + row * NR_SLOTS * SLOT_LEN;
     uint rowIdx = row/ROWS_PER_UINT;
     uint rowOffset = BITS_PER_ROW*(row%ROWS_PER_UINT);
     uint xcnt = atomic_add(rowCounters + rowIdx, 1 << rowOffset);
     xcnt = (xcnt >> rowOffset) & ROW_MASK;
     cnt = xcnt;
-    if (cnt >= NR_SLOTS)
+	    if (cnt >= NR_SLOTS)
       {
 	// avoid overflows
 	atomic_sub(rowCounters + rowIdx, 1 << rowOffset);
@@ -177,7 +189,27 @@ uint ht_store(uint round, __global char *ht, uint i,
 		*(__global uint *)(p + 0) = xi0;
 		*(__global uint *)(p + 4) = (xi0 >> 32);
 			}
-    return 0;
+	#ifdef DEBUG_EXTRACTION
+		{
+			uint idx = atomic_inc(extraction_dbg_counter);
+			if (idx < EXTRACTION_DEBUG_ENTRIES)
+			{
+				extraction_dbg[idx].round = round;
+				extraction_dbg[idx].thread_id = get_global_id(0);
+				extraction_dbg[idx].row = row;
+				extraction_dbg[idx].slot = cnt;
+				extraction_dbg[idx].xi0 = dbg_xi0;
+				extraction_dbg[idx].xi1 = dbg_xi1;
+				extraction_dbg[idx].xi2 = dbg_xi2;
+				extraction_dbg[idx].xi3 = dbg_xi3;
+			}
+		}
+	#endif
+		/* account a successful store for this round */
+		#ifdef PER_ROUND_COUNTS
+		atomic_inc(round_stored + round);
+		#endif
+		return 0;
 }
 
 #define mix(va, vb, vc, vd, x, y) \
@@ -200,7 +232,7 @@ vb = rotate((vb ^ vc), (ulong)64 - 63);
 */
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_round0(__global ulong *blake_state, __global char *ht,
-	__global uint *rowCounters, __global uint *debug HT_DBG_ARGS)
+	__global uint *rowCounters, __global uint *debug ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     uint                tid = get_global_id(0);
     ulong               v[16];
@@ -361,12 +393,12 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 		h[0],
 		h[1],
 		h[2],
-		h[3], rowCounters HT_DBG_PASS);
+		h[3], rowCounters ROUND_CNT_PASS HT_DBG_PASS);
 	dropped += ht_store(0, ht, input * 2 + 1,
 		(h[3] >> 8) | (h[4] << (64 - 8)),
 		(h[4] >> 8) | (h[5] << (64 - 8)),
 		(h[5] >> 8) | (h[6] << (64 - 8)),
-		(h[6] >> 8), rowCounters HT_DBG_PASS);
+		(h[6] >> 8), rowCounters ROUND_CNT_PASS HT_DBG_PASS);
 #else
 #error "unsupported ZCASH_HASH_LEN"
 #endif
@@ -446,7 +478,7 @@ uint well_aligned_int(__global ulong *_p, uint offset)
 */
 uint xor_and_store(uint round, __global char *ht_dst, uint row,
 	uint slot_a, uint slot_b, __global ulong *a, __global ulong *b,
-	__global uint *rowCounters HT_DBG_ARGS)
+	__global uint *rowCounters ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     ulong xi0, xi1, xi2;
 #if NR_ROWS_LOG >= 16 && NR_ROWS_LOG <= 20
@@ -508,13 +540,13 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
 			}
     // invalid solutions (which start happenning in round 5) have duplicate
     // inputs and xor to zero, so discard them
-    if (!xi0 && !xi1)
-	return 0;
+	if (!xi0 && !xi1)
+		return 0;
 #else
 
 #endif
 	return ht_store(round, ht_dst, ENCODE_INPUTS(row, slot_a, slot_b),
-		xi0, xi1, xi2, 0, rowCounters HT_DBG_PASS);
+		xi0, xi1, xi2, 0, rowCounters ROUND_CNT_PASS HT_DBG_PASS);
 }
 
 /*
@@ -529,7 +561,7 @@ void equihash_round(uint round,
 	__local uint *collisionsData,
 	__local uint *collisionsNum,
 	__global uint *rowCountersSrc,
-	__global uint *rowCountersDst HT_DBG_ARGS)
+	__global uint *rowCountersDst ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     uint		tid = get_global_id(0);
     uint		tlid = get_local_id(0);
@@ -640,7 +672,10 @@ void equihash_round(uint round,
 
 part2:
     barrier(CLK_LOCAL_MEM_FENCE);
-    uint totalCollisions = *collisionsNum;
+	uint totalCollisions = *collisionsNum;
+#ifdef PER_ROUND_COUNTS
+	atomic_add(round_collisions + round, totalCollisions);
+#endif
     for (uint index = tlid; index < totalCollisions; index += get_local_size(0))
       {
 	uint collision = collisionsData[index];
@@ -652,7 +687,7 @@ part2:
 	a = (__global ulong *)(ptr + i * SLOT_LEN);
 	b = (__global ulong *)(ptr + j * SLOT_LEN);
 		dropped_stor += xor_and_store(round, ht_dst, collisionThreadId, i, j,
-			a, b, rowCountersDst HT_DBG_PASS);
+			a, b, rowCountersDst ROUND_CNT_PASS HT_DBG_PASS);
       }
 #ifdef ENABLE_DEBUG
     debug[tid * 2] = dropped_coll;
@@ -667,13 +702,13 @@ part2:
 __kernel __attribute__((reqd_work_group_size(64, 1, 1))) \
 void kernel_round ## N(__global char *ht_src, __global char *ht_dst, \
 	__global uint *rowCountersSrc, __global uint *rowCountersDst, \
-	__global uint *debug HT_DBG_ARGS) \
+	__global uint *debug ROUND_CNT_ARGS HT_DBG_ARGS) \
 { \
-    __local uchar first_words_data[(NR_SLOTS+2)*64]; \
-    __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64]; \
-    __local uint    collisionsNum; \
+	__local uchar first_words_data[(NR_SLOTS+2)*64]; \
+	__local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64]; \
+	__local uint    collisionsNum; \
 	equihash_round(N, ht_src, ht_dst, debug, first_words_data, collisionsData, \
-		&collisionsNum, rowCountersSrc, rowCountersDst HT_DBG_PASS); \
+		&collisionsNum, rowCountersSrc, rowCountersDst ROUND_CNT_PASS HT_DBG_PASS); \
 }
 KERNEL_ROUND(1)
 KERNEL_ROUND(2)
@@ -685,14 +720,14 @@ KERNEL_ROUND(5)
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_round6(__global char *ht_src, __global char *ht_dst,
 	__global uint *rowCountersSrc, __global uint *rowCountersDst,
-	__global uint *debug, __global sols_t *sols HT_DBG_ARGS)
+	__global uint *debug, __global sols_t *sols ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     uint            tid = get_global_id(0);
     __local uchar   first_words_data[(NR_SLOTS+2)*64];
     __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64];
     __local uint    collisionsNum;
 	equihash_round(6, ht_src, ht_dst, debug, first_words_data, collisionsData,
-		&collisionsNum, rowCountersSrc, rowCountersDst HT_DBG_PASS);
+		&collisionsNum, rowCountersSrc, rowCountersDst ROUND_CNT_PASS HT_DBG_PASS);
     if (!tid)
         sols->nr = sols->likely_invalids = 0;
 }
@@ -776,7 +811,7 @@ void potential_sol(__global char **htabs, __global sols_t *sols,
 */
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_sols(__global char *ht0, __global char *ht1, __global sols_t *sols,
-	__global uint *rowCountersSrc, __global uint *rowCountersDst)
+	__global uint *rowCountersSrc, __global uint *rowCountersDst, __global uint *potential_cnt)
 {
     uint		tid = get_global_id(0);
     __global char	*htabs[2] = { ht0, ht1 };
@@ -813,6 +848,8 @@ void kernel_sols(__global char *ht0, __global char *ht1, __global sols_t *sols,
 	  {
 	    if (a_data == ((*(__global uint *)b) & mask))
 	      {
+		/* increment global potential-match counter for diagnostics */
+		atomic_inc(potential_cnt);
 		ref_j = *(__global uint *)(b - 4);
 		collisions = ((ulong)ref_i << 32) | ref_j;
 		goto exit1;

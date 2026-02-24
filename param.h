@@ -46,7 +46,7 @@
 
 #define NR_ROWS                         (1ULL << NR_ROWS_LOG)
 // Number of slots per row (dynamic, based on table size and overhead)
-#define NR_SLOTS 8ULL
+#define NR_SLOTS 32ULL
 // Length of 1 element (slot) in bytes
 #define SLOT_LEN                        32ULL
 // Total size of hash table
