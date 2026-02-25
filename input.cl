@@ -767,21 +767,22 @@ KERNEL_ROUND(2)
 KERNEL_ROUND(3)
 KERNEL_ROUND(4)
 KERNEL_ROUND(5)
+KERNEL_ROUND(6)
 
-// kernel_round6 for 192,7 - final round takes an extra argument, "sols"
+// kernel_round7 for 192,7 - final round takes an extra argument, "sols"
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
-void kernel_round6(__global char *ht_src, __global char *ht_dst,
+void kernel_round7(__global char *ht_src, __global char *ht_dst,
 	__global uint *rowCountersSrc, __global uint *rowCountersDst,
 	__global uint *debug, __global sols_t *sols ROUND_CNT_ARGS HT_DBG_ARGS)
 {
-    uint            tid = get_global_id(0);
-    __local uchar   first_words_data[(NR_SLOTS+2)*64];
-    __local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64];
-    __local uint    collisionsNum;
-	equihash_round(6, ht_src, ht_dst, debug, first_words_data, collisionsData,
+	uint            tid = get_global_id(0);
+	__local uchar   first_words_data[(NR_SLOTS+2)*64];
+	__local uint    collisionsData[COLL_DATA_SIZE_PER_TH * 64];
+	__local uint    collisionsNum;
+	equihash_round(7, ht_src, ht_dst, debug, first_words_data, collisionsData,
 		&collisionsNum, rowCountersSrc, rowCountersDst ROUND_CNT_PASS HT_DBG_PASS);
-    if (!tid)
-        sols->nr = sols->likely_invalids = 0;
+	if (!tid)
+		sols->nr = sols->likely_invalids = 0;
 }
 
 
@@ -840,7 +841,7 @@ void potential_sol(__global char **htabs, __global sols_t *sols,
     nr_values = 0;
     values_tmp[nr_values++] = ref0;
     values_tmp[nr_values++] = ref1;
-    uint round = PARAM_K - 1;
+	uint round = PARAM_K;
     do
       {
 	round--;
@@ -868,9 +869,9 @@ void kernel_sols(__global char *ht0, __global char *ht1, __global sols_t *sols,
     uint		tid = get_global_id(0);
     __global char	*htabs[2] = { ht0, ht1 };
     __global char	*hcounters[2] = { rowCountersSrc, rowCountersDst };
-    uint		ht_i = (PARAM_K - 1) % 2; // table filled at last round
+	uint		ht_i = (PARAM_K) % 2; // table filled at last round
     uint		cnt;
-    uint		xi_offset = xi_offset_for_round(PARAM_K - 1);
+	uint		xi_offset = xi_offset_for_round(PARAM_K);
     uint		i, j;
     __global char	*a, *b;
     uint		ref_i, ref_j;

@@ -650,7 +650,8 @@ uint32_t print_solver_line(uint32_t *values, uint8_t *header,
     p = buffer;
     memcpy(p, header, ZCASH_BLOCK_HEADER_LEN);
     p += ZCASH_BLOCK_HEADER_LEN;
-    memcpy(p, "\xfd\x40\x05", ZCASH_SOLSIZE_LEN);
+    /* compact-encoded size for 400 bytes: 0xfd 0x90 0x01 */
+    memcpy(p, "\xfd\x90\x01", ZCASH_SOLSIZE_LEN);
     p += ZCASH_SOLSIZE_LEN;
     store_encoded_sol(p, values, 1 << PARAM_K);
     Sha256_Onestep(buffer, sizeof (buffer), hash0);
@@ -930,7 +931,7 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
     zcash_blake2b_update(&blake, header, 128, 0);
     buf_blake_st = check_clCreateBuffer(ctx, CL_MEM_READ_ONLY |
 	    CL_MEM_COPY_HOST_PTR, sizeof (blake.h), &blake.h);
-    for (unsigned round = 0; round < PARAM_K; round++)
+        for (unsigned round = 0; round <= PARAM_K; round++)
       {
 	if (verbose > 1)
 	    debug("Round %d\n", round);
@@ -956,7 +957,7 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                 check_clSetKernelArg(k_rounds[round], 2, &rowCounters[(round - 1) % 2]);
                 check_clSetKernelArg(k_rounds[round], 3, &rowCounters[round % 2]);
                 check_clSetKernelArg(k_rounds[round], 4, &buf_dbg);
-                if (round == PARAM_K - 1)
+                if (round == PARAM_K)
                     {
                         check_clSetKernelArg(k_rounds[round], 5, &buf_sols);
                         /* per-round counters come next */
@@ -1202,13 +1203,13 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     cl_mem buf_potential_cnt = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, sizeof(uint32_t), potential_cnt_host);
     /* per-round counters (host + device) */
-    uint32_t *round_collisions_host = calloc(PARAM_K, sizeof(uint32_t));
-    uint32_t *round_stored_host = calloc(PARAM_K, sizeof(uint32_t));
+    uint32_t *round_collisions_host = calloc(PARAM_K + 1, sizeof(uint32_t));
+    uint32_t *round_stored_host = calloc(PARAM_K + 1, sizeof(uint32_t));
     if (!round_collisions_host || !round_stored_host) fatal("malloc: %s\n", strerror(errno));
     cl_mem buf_round_collisions = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        PARAM_K * sizeof(uint32_t), round_collisions_host);
+        (PARAM_K + 1) * sizeof(uint32_t), round_collisions_host);
     cl_mem buf_round_stored = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        PARAM_K * sizeof(uint32_t), round_stored_host);
+        (PARAM_K + 1) * sizeof(uint32_t), round_stored_host);
     buf_ht[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_ht[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_sols = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeof (sols_t), NULL);
@@ -1248,11 +1249,11 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
         fprintf(stderr, "debug: buf_round_collisions=%p buf_round_stored=%p\n", (void*)buf_round_collisions, (void*)buf_round_stored);
         if (buf_round_collisions) {
             check_clEnqueueReadBuffer(queue, buf_round_collisions, CL_TRUE,
-                0, PARAM_K * sizeof(uint32_t), round_collisions_host, 0, NULL, NULL);
+                0, (PARAM_K + 1) * sizeof(uint32_t), round_collisions_host, 0, NULL, NULL);
             check_clEnqueueReadBuffer(queue, buf_round_stored, CL_TRUE,
-                0, PARAM_K * sizeof(uint32_t), round_stored_host, 0, NULL, NULL);
+                0, (PARAM_K + 1) * sizeof(uint32_t), round_stored_host, 0, NULL, NULL);
             fprintf(stderr, "Per-round counters:\n");
-            for (unsigned r = 0; r < PARAM_K; r++) {
+            for (unsigned r = 0; r <= PARAM_K; r++) {
                 fprintf(stderr, " round %u: collisions=%u stored=%u\n", r, round_collisions_host[r], round_stored_host[r]);
             }
         }
@@ -1555,7 +1556,7 @@ void init_and_run_opencl(uint8_t *header, size_t header_len)
 {
     cl_platform_id	plat_id = 0;
     cl_device_id	dev_id = 0;
-    cl_kernel		k_rounds[PARAM_K];
+    cl_kernel		k_rounds[PARAM_K + 1];
     cl_int		status;
     scan_platforms(&plat_id, &dev_id);
     if (!plat_id || !dev_id)
@@ -1597,7 +1598,7 @@ void init_and_run_opencl(uint8_t *header, size_t header_len)
     cl_kernel k_init_ht = clCreateKernel(program, "kernel_init_ht", &status);
     if (status != CL_SUCCESS || !k_init_ht)
 	fatal("clCreateKernel (%d)\n", status);
-    for (unsigned round = 0; round < PARAM_K; round++)
+    for (unsigned round = 0; round <= PARAM_K; round++)
       {
 	char	name[128];
 	snprintf(name, sizeof (name), "kernel_round%d", round);
@@ -1614,8 +1615,8 @@ void init_and_run_opencl(uint8_t *header, size_t header_len)
     assert(CL_SUCCESS == 0);
     status = CL_SUCCESS;
     status |= clReleaseKernel(k_init_ht);
-    for (unsigned round = 0; round < PARAM_K; round++)
-	status |= clReleaseKernel(k_rounds[round]);
+    for (unsigned round = 0; round <= PARAM_K; round++)
+        status |= clReleaseKernel(k_rounds[round]);
     status |= clReleaseKernel(k_sols);
     status |= clReleaseProgram(program);
     status |= clReleaseCommandQueue(queue);
