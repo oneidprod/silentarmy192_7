@@ -18,6 +18,8 @@
 #include "blake.h"
 #include "_kernel.h"
 #include "sha256.h"
+#include <signal.h>
+#include <execinfo.h>
 
 typedef uint8_t		uchar;
 typedef uint32_t	uint;
@@ -151,6 +153,29 @@ void double_to_timespec(double dt, struct timespec *t)
 void get_time(struct timespec *t)
 {
     clock_gettime(CLOCK_MONOTONIC, t);
+}
+
+static void crash_handler(int sig)
+{
+    void *array[50];
+    size_t size;
+    size = backtrace(array, 50);
+    fprintf(stderr, "*** Crash: signal %d\n", sig);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+    _exit(128 + sig);
+}
+
+static void install_crash_handler(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = crash_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESETHAND | SA_NODEFER;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
 }
 
 cl_mem check_clCreateBuffer(cl_context ctx, cl_mem_flags flags, size_t size,
@@ -1384,13 +1409,31 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
             /* Dump the top sampled rows from device for inspection */
             for (size_t k = 0; k < top; k++) {
                 uint32_t row = rows[k].row;
-                /* find a sample entry to get the round for this row */
+                /* find a sample entry to get the round for this row (validate values) */
                 uint32_t round_for_row = 0;
-                for (size_t si = 0; si < to_read; si++) if (sample[si].row == row) { round_for_row = sample[si].round; break; }
+                for (size_t si = 0; si < to_read; si++) {
+                    if (sample[si].row != row) continue;
+                    if (sample[si].round <= PARAM_K) { round_for_row = sample[si].round; break; }
+                    /* corrupted round value: warn and skip to safe default */
+                    warn("Warning: corrupt sample round=%u for row=%u, using 0\n", sample[si].round, row);
+                    round_for_row = 0;
+                    break;
+                }
+                /* validate row index */
+                if (row >= NR_ROWS) {
+                    warn("Warning: sampled row %u >= NR_ROWS (%u), skipping dump\n", row, NR_ROWS);
+                    continue;
+                }
                 size_t row_size = NR_SLOTS * SLOT_LEN;
                 uint8_t *rowbuf = malloc(row_size);
                 if (!rowbuf) fatal("malloc: %s\n", strerror(errno));
                 size_t off = (size_t)row * row_size;
+                /* ensure offset within HT_SIZE */
+                if (off + row_size > HT_SIZE) {
+                    warn("Warning: requested HT offset out of range: off=%zu row_size=%zu HT_SIZE=%zu\n", off, row_size, (size_t)HT_SIZE);
+                    free(rowbuf);
+                    continue;
+                }
                 check_clEnqueueReadBuffer(queue, buf_ht[round_for_row % 2], CL_TRUE,
                     off, row_size, rowbuf, 0, NULL, NULL);
                 /* read packed rowCounters to get slot count for this row */
@@ -1410,6 +1453,11 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
                 fprintf(stderr, "Dump row %u (round %u): cnt=%u  (other_round_cnt=%u)\n", row, round_for_row, cnt, cnt_other);
                 for (uint32_t slot = 0; slot < cnt; slot++) {
                     uint8_t *p = rowbuf + slot * SLOT_LEN;
+                    /* sanity check pointer offset */
+                    if ((size_t)(p - rowbuf) + SLOT_LEN > row_size) {
+                        warn("Warning: slot %u would read past row buffer, skipping remaining slots\n", slot);
+                        break;
+                    }
                     size_t xi_off = xi_offset_for_round(round_for_row);
                     uint32_t idx = *(uint32_t *)(p + xi_off - 4);
                     size_t xi_len = 0;
@@ -1765,6 +1813,7 @@ int main(int argc, char **argv)
                 break ;
           }
     tests();
+    install_crash_handler();
     if (mining)
 	puts("SILENTARMY mining mode ready"), fflush(stdout);
     header_len = parse_header(header, sizeof (header), hex_header);
