@@ -33,6 +33,8 @@ typedef struct extraction_debug_s {
     uint64_t xi1;
     uint64_t xi2;
     uint64_t xi3;
+    uint32_t status; /* 1=xor_nonzero, 2=stored, 3=overflow */
+    uint32_t _pad;
 } extraction_debug_t;
 
 #define MIN(A, B)	(((A) < (B)) ? (A) : (B))
@@ -1252,8 +1254,8 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
             size_t show = to_read < 32 ? to_read : 32;
             for (size_t i = 0; i < show; i++)
             {
-                fprintf(stderr, "DBG[%zu]: round=%u tid=%u row=%u slot=%u xi0=%016" PRIx64 " xi1=%016" PRIx64 " xi2=%016" PRIx64 " xi3=%016" PRIx64 "\n",
-                    i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot,
+                fprintf(stderr, "DBG[%zu]: round=%u tid=%u row=%u slot=%u status=%u xi0=%016" PRIx64 " xi1=%016" PRIx64 " xi2=%016" PRIx64 " xi3=%016" PRIx64 "\n",
+                    i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot, sample[i].status,
                     (uint64_t)sample[i].xi0, (uint64_t)sample[i].xi1, (uint64_t)sample[i].xi2, (uint64_t)sample[i].xi3);
             }
             /* Quick validation: try multiple xi0 reconstructions and compare rows */
@@ -1363,6 +1365,43 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
             fprintf(stderr, "Top %zu rows in sample:\n", top);
             for (size_t k = 0; k < top; k++)
                 fprintf(stderr, " row %u: %u entries\n", rows[k].row, rows[k].cnt);
+            /* Dump the top sampled rows from device for inspection */
+            for (size_t k = 0; k < top; k++) {
+                uint32_t row = rows[k].row;
+                /* find a sample entry to get the round for this row */
+                uint32_t round_for_row = 0;
+                for (size_t si = 0; si < to_read; si++) if (sample[si].row == row) { round_for_row = sample[si].round; break; }
+                size_t row_size = NR_SLOTS * SLOT_LEN;
+                uint8_t *rowbuf = malloc(row_size);
+                if (!rowbuf) fatal("malloc: %s\n", strerror(errno));
+                size_t off = (size_t)row * row_size;
+                check_clEnqueueReadBuffer(queue, buf_ht[round_for_row % 2], CL_TRUE,
+                    off, row_size, rowbuf, 0, NULL, NULL);
+                /* read packed rowCounters to get slot count for this row */
+                uint32_t rc_val = 0;
+                uint32_t rowIdx = row / ROWS_PER_UINT;
+                uint32_t rowOffset = BITS_PER_ROW * (row % ROWS_PER_UINT);
+                check_clEnqueueReadBuffer(queue, rowCounters[round_for_row % 2], CL_TRUE,
+                    rowIdx * sizeof(uint32_t), sizeof(uint32_t), &rc_val, 0, NULL, NULL);
+                uint32_t cnt = (rc_val >> rowOffset) & ROW_MASK;
+                cnt = MIN(cnt, NR_SLOTS);
+                fprintf(stderr, "Dump row %u (round %u): cnt=%u\n", row, round_for_row, cnt);
+                for (uint32_t slot = 0; slot < cnt; slot++) {
+                    uint8_t *p = rowbuf + slot * SLOT_LEN;
+                    size_t xi_off = xi_offset_for_round(round_for_row);
+                    uint32_t idx = *(uint32_t *)(p + xi_off - 4);
+                    size_t xi_len = 0;
+                    if (round_for_row == 0 || round_for_row == 1) xi_len = 24;
+                    else if (round_for_row == 2) xi_len = 20;
+                    else if (round_for_row == 3) xi_len = 16;
+                    else if (round_for_row == 4) xi_len = 16;
+                    else if (round_for_row == 5) xi_len = 12;
+                    else xi_len = 8;
+                    fprintf(stderr, " slot %02u: i=%08x xi=", slot, idx);
+                    fprintf(stderr, "%s\n", s_hexdump(p + xi_off, xi_len));
+                }
+                free(rowbuf);
+            }
             free(rows);
             free(sample);
         }

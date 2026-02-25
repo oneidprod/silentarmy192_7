@@ -16,6 +16,7 @@ typedef struct extraction_debug_s {
 	ulong xi1;
 	ulong xi2;
 	ulong xi3;
+	uint status; /* 1=xor_nonzero, 2=stored, 3=overflow */
 } extraction_debug_t;
 #define EXTRACTION_DEBUG_ENTRIES 4096
 #endif
@@ -150,7 +151,33 @@ uint ht_store(uint round, __global char *ht, uint i,
       {
 	// avoid overflows
 	atomic_sub(rowCounters + rowIdx, 1 << rowOffset);
-	return 1;
+			/* Log overflow attempt (sample round 0 to avoid saturation) */
+			#ifdef DEBUG_EXTRACTION
+			{
+				uint do_log = 1;
+				/* sample most round-0 events to free buffer for later rounds */
+				if (round == 0) {
+					/* keep ~1/256 of round-0 logs based on input index 'i' */
+					if ((i & 0xff) != 0) do_log = 0;
+				}
+				if (do_log) {
+					uint idx = atomic_inc(extraction_dbg_counter);
+					if (idx < EXTRACTION_DEBUG_ENTRIES)
+					{
+						extraction_dbg[idx].round = round;
+						extraction_dbg[idx].thread_id = get_global_id(0);
+						extraction_dbg[idx].row = row;
+						extraction_dbg[idx].slot = cnt;
+						extraction_dbg[idx].xi0 = dbg_xi0;
+						extraction_dbg[idx].xi1 = dbg_xi1;
+						extraction_dbg[idx].xi2 = dbg_xi2;
+						extraction_dbg[idx].xi3 = dbg_xi3;
+						extraction_dbg[idx].status = 3; /* overflow */
+					}
+				}
+			}
+			#endif
+			return 1;
       }
     p += cnt * SLOT_LEN + xi_offset_for_round(round);
     // store "i" (always 4 bytes before Xi)
@@ -196,17 +223,26 @@ uint ht_store(uint round, __global char *ht, uint i,
 			}
 	#ifdef DEBUG_EXTRACTION
 		{
-			uint idx = atomic_inc(extraction_dbg_counter);
-			if (idx < EXTRACTION_DEBUG_ENTRIES)
-			{
-				extraction_dbg[idx].round = round;
-				extraction_dbg[idx].thread_id = get_global_id(0);
-				extraction_dbg[idx].row = row;
-				extraction_dbg[idx].slot = cnt;
-				extraction_dbg[idx].xi0 = dbg_xi0;
-				extraction_dbg[idx].xi1 = dbg_xi1;
-				extraction_dbg[idx].xi2 = dbg_xi2;
-				extraction_dbg[idx].xi3 = dbg_xi3;
+			uint do_log = 1;
+			/* sample round-0 stored events so we don't fill the buffer with round-0 only */
+			if (round == 0) {
+				/* keep ~1/256 of round-0 logs based on input index 'i' */
+				if ((i & 0xff) != 0) do_log = 0;
+			}
+			if (do_log) {
+				uint idx = atomic_inc(extraction_dbg_counter);
+				if (idx < EXTRACTION_DEBUG_ENTRIES)
+				{
+					extraction_dbg[idx].round = round;
+					extraction_dbg[idx].thread_id = get_global_id(0);
+					extraction_dbg[idx].row = row;
+					extraction_dbg[idx].slot = cnt;
+					extraction_dbg[idx].xi0 = dbg_xi0;
+					extraction_dbg[idx].xi1 = dbg_xi1;
+					extraction_dbg[idx].xi2 = dbg_xi2;
+					extraction_dbg[idx].xi3 = dbg_xi3;
+					extraction_dbg[idx].status = 2; /* stored */
+				}
 			}
 		}
 	#endif
@@ -547,6 +583,25 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
     // inputs and xor to zero, so discard them
 	if (!xi0 && !xi1)
 		return 0;
+
+	/* Log xor non-zero event for diagnostics */
+	#ifdef DEBUG_EXTRACTION
+	{
+		uint idx = atomic_inc(extraction_dbg_counter);
+		if (idx < EXTRACTION_DEBUG_ENTRIES)
+		{
+			extraction_dbg[idx].round = round;
+			extraction_dbg[idx].thread_id = get_global_id(0);
+			extraction_dbg[idx].row = row;
+			extraction_dbg[idx].slot = slot_b; /* record second slot */
+			extraction_dbg[idx].xi0 = xi0;
+			extraction_dbg[idx].xi1 = xi1;
+			extraction_dbg[idx].xi2 = xi2;
+			extraction_dbg[idx].xi3 = 0ULL;
+			extraction_dbg[idx].status = 1; /* xor_nonzero */
+		}
+	}
+	#endif
 #else
 
 #endif
@@ -627,21 +682,10 @@ void equihash_round(uint round,
 		    uint index = atomic_inc(collisionsNum);
 		    collisionsData[index] = collision;
 		  }
-		collision++;
-		j++;
-	      }
-	      {
-		uint isColl = ((data_i == first_words[j]) ? 1 : 0);
-		if (isColl)
-		  {
-		    thCollNum++;
-		    uint index = atomic_inc(collisionsNum);
-		    collisionsData[index] = collision;
-		  }
-		collision++;
-		j++;
-	      }
-	      {
+			collision++;
+			j++;
+		}
+		{
 		uint isColl = ((data_i == first_words[j]) ? 1 : 0);
 		if (isColl)
 		  {
