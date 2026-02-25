@@ -16,7 +16,14 @@ typedef struct extraction_debug_s {
 	ulong xi1;
 	ulong xi2;
 	ulong xi3;
+	/* first 32 bytes of the stored slot (copied for diagnostics) */
+	ulong stored0;
+	ulong stored1;
+	ulong stored2;
+	ulong stored3;
 	uint status; /* 1=xor_nonzero, 2=stored, 3=overflow */
+	uint table_half; /* which buf_ht half was written (round % 2) */
+	ulong xi_sig; /* simple signature: dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3 */
 } extraction_debug_t;
 #define EXTRACTION_DEBUG_ENTRIES 4096
 #endif
@@ -155,11 +162,8 @@ uint ht_store(uint round, __global char *ht, uint i,
 			#ifdef DEBUG_EXTRACTION
 			{
 				uint do_log = 1;
-				/* sample most round-0 events to free buffer for later rounds */
-				if (round == 0) {
-					/* keep ~1/256 of round-0 logs based on input index 'i' */
-					if ((i & 0xff) != 0) do_log = 0;
-				}
+				/* do not log round-0 events here to prioritise later rounds */
+				if (round == 0) do_log = 0;
 				if (do_log) {
 					uint idx = atomic_inc(extraction_dbg_counter);
 					if (idx < EXTRACTION_DEBUG_ENTRIES)
@@ -173,6 +177,12 @@ uint ht_store(uint round, __global char *ht, uint i,
 						extraction_dbg[idx].xi2 = dbg_xi2;
 						extraction_dbg[idx].xi3 = dbg_xi3;
 						extraction_dbg[idx].status = 3; /* overflow */
+						extraction_dbg[idx].stored0 = xi0;
+						extraction_dbg[idx].stored1 = xi1;
+						extraction_dbg[idx].stored2 = xi2;
+						extraction_dbg[idx].stored3 = xi3;
+						extraction_dbg[idx].table_half = round & 1;
+						extraction_dbg[idx].xi_sig = dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3;
 					}
 				}
 			}
@@ -223,12 +233,9 @@ uint ht_store(uint round, __global char *ht, uint i,
 			}
 	#ifdef DEBUG_EXTRACTION
 		{
-			uint do_log = 1;
-			/* sample round-0 stored events so we don't fill the buffer with round-0 only */
-			if (round == 0) {
-				/* keep ~1/256 of round-0 logs based on input index 'i' */
-				if ((i & 0xff) != 0) do_log = 0;
-			}
+				uint do_log = 1;
+				/* do not log round-0 stored events here to prioritise later rounds */
+				if (round == 0) do_log = 0;
 			if (do_log) {
 				uint idx = atomic_inc(extraction_dbg_counter);
 				if (idx < EXTRACTION_DEBUG_ENTRIES)
@@ -242,6 +249,13 @@ uint ht_store(uint round, __global char *ht, uint i,
 					extraction_dbg[idx].xi2 = dbg_xi2;
 					extraction_dbg[idx].xi3 = dbg_xi3;
 					extraction_dbg[idx].status = 2; /* stored */
+					/* copy first 32 bytes of stored slot for offline inspection */
+					extraction_dbg[idx].stored0 = xi0;
+					extraction_dbg[idx].stored1 = xi1;
+					extraction_dbg[idx].stored2 = xi2;
+					extraction_dbg[idx].stored3 = xi3;
+					extraction_dbg[idx].table_half = round & 1;
+					extraction_dbg[idx].xi_sig = dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3;
 				}
 			}
 		}
@@ -585,22 +599,9 @@ uint xor_and_store(uint round, __global char *ht_dst, uint row,
 		return 0;
 
 	/* Log xor non-zero event for diagnostics */
+	/* Skip frequent xor_nonzero logging to prioritise stored-event samples */
 	#ifdef DEBUG_EXTRACTION
-	{
-		uint idx = atomic_inc(extraction_dbg_counter);
-		if (idx < EXTRACTION_DEBUG_ENTRIES)
-		{
-			extraction_dbg[idx].round = round;
-			extraction_dbg[idx].thread_id = get_global_id(0);
-			extraction_dbg[idx].row = row;
-			extraction_dbg[idx].slot = slot_b; /* record second slot */
-			extraction_dbg[idx].xi0 = xi0;
-			extraction_dbg[idx].xi1 = xi1;
-			extraction_dbg[idx].xi2 = xi2;
-			extraction_dbg[idx].xi3 = 0ULL;
-			extraction_dbg[idx].status = 1; /* xor_nonzero */
-		}
-	}
+	/* intentionally disabled: do not fill debug buffer with xor events */
 	#endif
 #else
 

@@ -33,7 +33,13 @@ typedef struct extraction_debug_s {
     uint64_t xi1;
     uint64_t xi2;
     uint64_t xi3;
+    uint64_t stored0;
+    uint64_t stored1;
+    uint64_t stored2;
+    uint64_t stored3;
     uint32_t status; /* 1=xor_nonzero, 2=stored, 3=overflow */
+    uint32_t table_half; /* which buf_ht half was written */
+    uint64_t xi_sig; /* dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3 */
     uint32_t _pad;
 } extraction_debug_t;
 
@@ -42,11 +48,12 @@ typedef struct extraction_debug_s {
 
 int		verbose = 2; // elevated for diagnostics
 uint32_t	show_encoded = 0;
-uint64_t	nr_nonces = 1;
-uint32_t	do_list_devices = 0;
 uint32_t	gpu_to_use = 0;
 uint32_t	mining = 0;
 double		kern_avg_run_time = 0;
+uint64_t	nr_nonces = 1;
+int		do_list_devices = 0;
+int		diag_mode = 0;
 
 typedef struct  debug_s
 {
@@ -973,6 +980,10 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
 		&global_ws, &local_work_size, 0, NULL, NULL);
 	examine_ht(round, queue, buf_ht[round % 2]);
 	examine_dbg(queue, buf_dbg, dbg_size);
+    /* quick-diagnostic mode: stop after first round to finish fast */
+    if (diag_mode) {
+        break;
+    }
       }
     check_clSetKernelArg(k_sols, 0, &buf_ht[0]);
     check_clSetKernelArg(k_sols, 1, &buf_ht[1]);
@@ -1201,8 +1212,11 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     buf_ht[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_ht[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, HT_SIZE, NULL);
     buf_sols = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeof (sols_t), NULL);
-    rowCounters[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, NR_ROWS, NULL);
-    rowCounters[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE, NR_ROWS, NULL);
+    /* rowCounters stores packed counters: one uint per ROWS_PER_UINT group */
+    rowCounters[0] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE,
+        (NR_ROWS / ROWS_PER_UINT) * sizeof(uint32_t), NULL);
+    rowCounters[1] = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE,
+        (NR_ROWS / ROWS_PER_UINT) * sizeof(uint32_t), NULL);
     if (mining)
         mining_mode(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
         buf_sols, buf_dbg, dbg_size, header, rowCounters, buf_extraction_dbg, extraction_dbg_size, buf_extraction_dbg_counter, extraction_dbg_counter_size, buf_potential_cnt, buf_round_collisions, buf_round_stored);
@@ -1254,9 +1268,10 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
             size_t show = to_read < 32 ? to_read : 32;
             for (size_t i = 0; i < show; i++)
             {
-                fprintf(stderr, "DBG[%zu]: round=%u tid=%u row=%u slot=%u status=%u xi0=%016" PRIx64 " xi1=%016" PRIx64 " xi2=%016" PRIx64 " xi3=%016" PRIx64 "\n",
-                    i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot, sample[i].status,
-                    (uint64_t)sample[i].xi0, (uint64_t)sample[i].xi1, (uint64_t)sample[i].xi2, (uint64_t)sample[i].xi3);
+                fprintf(stderr, "DBG[%zu]: round=%u tid=%u row=%u slot=%u status=%u table_half=%u xi_sig=%016" PRIx64 " xi0=%016" PRIx64 " xi1=%016" PRIx64 " xi2=%016" PRIx64 " xi3=%016" PRIx64 " stored0=%016" PRIx64 " stored1=%016" PRIx64 " stored2=%016" PRIx64 " stored3=%016" PRIx64 "\n",
+                    i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot, sample[i].status, sample[i].table_half, (uint64_t)sample[i].xi_sig,
+                    (uint64_t)sample[i].xi0, (uint64_t)sample[i].xi1, (uint64_t)sample[i].xi2, (uint64_t)sample[i].xi3,
+                    (uint64_t)sample[i].stored0, (uint64_t)sample[i].stored1, (uint64_t)sample[i].stored2, (uint64_t)sample[i].stored3);
             }
             /* Quick validation: try multiple xi0 reconstructions and compare rows */
             {
@@ -1383,9 +1398,15 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
                 uint32_t rowOffset = BITS_PER_ROW * (row % ROWS_PER_UINT);
                 check_clEnqueueReadBuffer(queue, rowCounters[round_for_row % 2], CL_TRUE,
                     rowIdx * sizeof(uint32_t), sizeof(uint32_t), &rc_val, 0, NULL, NULL);
+                /* also read the other round's packed counter for comparison */
+                uint32_t rc_val_other = 0;
+                check_clEnqueueReadBuffer(queue, rowCounters[(round_for_row + 1) % 2], CL_TRUE,
+                    rowIdx * sizeof(uint32_t), sizeof(uint32_t), &rc_val_other, 0, NULL, NULL);
                 uint32_t cnt = (rc_val >> rowOffset) & ROW_MASK;
                 cnt = MIN(cnt, NR_SLOTS);
-                fprintf(stderr, "Dump row %u (round %u): cnt=%u\n", row, round_for_row, cnt);
+                uint32_t cnt_other = (rc_val_other >> rowOffset) & ROW_MASK;
+                cnt_other = MIN(cnt_other, NR_SLOTS);
+                fprintf(stderr, "Dump row %u (round %u): cnt=%u  (other_round_cnt=%u)\n", row, round_for_row, cnt, cnt_other);
                 for (uint32_t slot = 0; slot < cnt; slot++) {
                     uint8_t *p = rowbuf + slot * SLOT_LEN;
                     size_t xi_off = xi_offset_for_round(round_for_row);
@@ -1645,6 +1666,7 @@ enum
     OPT_LIST,
     OPT_USE,
     OPT_MINING,
+    OPT_DIAG,
 };
 
 static struct option    optlong[] =
@@ -1661,6 +1683,7 @@ static struct option    optlong[] =
       {"list",		no_argument,		0,	OPT_LIST},
       {"use",		required_argument,	0,	OPT_USE},
       {"mining",	no_argument,		0,	OPT_MINING},
+            {"diag",	no_argument,		0,	OPT_DIAG},
       {0,		0,			0,	0},
 };
 
@@ -1733,6 +1756,9 @@ int main(int argc, char **argv)
 	    case OPT_MINING:
 		mining = 1;
 		break ;
+            case OPT_DIAG:
+                diag_mode = 1;
+                break ;
             default:
                 fatal("Try '%s --help'\n", argv[0]);
                 break ;
