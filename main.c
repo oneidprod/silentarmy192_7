@@ -1556,6 +1556,23 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
                     fprintf(stderr, " slot %02u: i=%08x xi=", slot, idx);
                     fprintf(stderr, "%s\n", s_hexdump(p + xi_off, xi_len));
                 }
+                /* also write raw row dump to disk for offline analysis */
+                {
+                    char fname_row[256];
+                    snprintf(fname_row, sizeof(fname_row), "row_%u_round%u.bin", row, round_for_row);
+                    dump(fname_row, rowbuf, row_size);
+                    fprintf(stderr, "Wrote HT row dump %s (round %u)\n", fname_row, round_for_row);
+                    /* also dump same row from the other round's HT half for comparison */
+                    uint8_t *rowbuf_other = malloc(row_size);
+                    if (rowbuf_other) {
+                        check_clEnqueueReadBuffer(queue, buf_ht[(round_for_row+1) % 2], CL_TRUE,
+                            off, row_size, rowbuf_other, 0, NULL, NULL);
+                        snprintf(fname_row, sizeof(fname_row), "row_%u_round%u.bin", row, (round_for_row+1)%2);
+                        dump(fname_row, rowbuf_other, row_size);
+                        fprintf(stderr, "Wrote HT row dump %s (round %u)\n", fname_row, (round_for_row+1)%2);
+                        free(rowbuf_other);
+                    }
+                }
                 free(rowbuf);
             }
             free(rows);
