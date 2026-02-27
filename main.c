@@ -1315,6 +1315,19 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
                 0, sizeof(pot), &pot, 0, NULL, NULL);
             fprintf(stderr, "potential_matches_final_table = %u\n", pot);
         }
+        /* read snapshot counter and seq value */
+        if (buf_snapshot_counter) {
+            uint32_t sc = 0;
+            check_clEnqueueReadBuffer(queue, buf_snapshot_counter, CL_TRUE,
+                0, sizeof(sc), &sc, 0, NULL, NULL);
+            fprintf(stderr, "snapshot_counter = %u\n", sc);
+        }
+        if (buf_snapshot_seq) {
+            uint32_t ss = 0;
+            check_clEnqueueReadBuffer(queue, buf_snapshot_seq, CL_TRUE,
+                0, sizeof(ss), &ss, 0, NULL, NULL);
+            fprintf(stderr, "snapshot_seq_counter = %u\n", ss);
+        }
         /* Read per-round counters */
         fprintf(stderr, "debug: buf_round_collisions=%p buf_round_stored=%p\n", (void*)buf_round_collisions, (void*)buf_round_stored);
         if (buf_round_collisions) {
