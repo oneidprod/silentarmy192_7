@@ -223,6 +223,18 @@ void check_clEnqueueReadBuffer(cl_command_queue queue, cl_mem buffer, cl_bool
         fatal("clEnqueueReadBuffer (%d)\n", status);
 }
 
+void check_clEnqueueWriteBuffer(cl_command_queue queue, cl_mem buffer, cl_bool
+    blocking_write, size_t offset, size_t size, const void *ptr, cl_uint
+    num_events_in_wait_list, const cl_event *event_wait_list, cl_event
+    *event)
+{
+    cl_int	status;
+    status = clEnqueueWriteBuffer(queue, buffer, blocking_write, offset,
+        size, ptr, num_events_in_wait_list, event_wait_list, event);
+    if (status != CL_SUCCESS)
+        fatal("clEnqueueWriteBuffer (%d)\n", status);
+}
+
 void hexdump(uint8_t *a, uint32_t a_len)
 {
     for (uint32_t i = 0; i < a_len; i++)
@@ -921,7 +933,7 @@ unsigned get_value(unsigned *data, unsigned row)
 */
 uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
     cl_kernel k_init_ht, cl_kernel *k_rounds, cl_kernel k_sols,
-    cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, cl_mem buf_extraction_dbg, cl_mem buf_extraction_dbg_counter, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored, size_t dbg_size,
+    cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, cl_mem buf_extraction_dbg, cl_mem buf_extraction_dbg_counter, cl_mem buf_snapshots, cl_mem buf_snapshot_counter, cl_mem buf_snapshot_seq, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored, size_t dbg_size,
     uint8_t *header, size_t header_len, char do_increment,
     size_t fixed_nonce_bytes, uint8_t *target, char *job_id,
     uint32_t *shares, cl_mem *rowCounters)
@@ -962,7 +974,7 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
 	    debug("Round %d\n", round);
 	// Now on every round!!!!
 	init_ht(queue, k_init_ht, buf_ht[round % 2], rowCounters[round % 2]);
-	if (!round)
+                if (!round)
 	  {
         check_clSetKernelArg(k_rounds[round], 0, &buf_blake_st);
         check_clSetKernelArg(k_rounds[round], 1, &buf_ht[round % 2]);
@@ -971,8 +983,11 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
         /* per-round counters: collisions and stored (kernel expects these before extraction debug) */
         check_clSetKernelArg(k_rounds[round], 4, &buf_round_collisions);
         check_clSetKernelArg(k_rounds[round], 5, &buf_round_stored);
-        check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg);
-        check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg_counter);
+                check_clSetKernelArg(k_rounds[round], 6, &buf_extraction_dbg);
+                check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg_counter);
+                check_clSetKernelArg(k_rounds[round], 8, &buf_snapshots);
+                check_clSetKernelArg(k_rounds[round], 9, &buf_snapshot_counter);
+                check_clSetKernelArg(k_rounds[round], 10, &buf_snapshot_seq);
         global_ws = select_work_size_blake();
 	  }
 	else
@@ -982,14 +997,17 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                 check_clSetKernelArg(k_rounds[round], 2, &rowCounters[(round - 1) % 2]);
                 check_clSetKernelArg(k_rounds[round], 3, &rowCounters[round % 2]);
                 check_clSetKernelArg(k_rounds[round], 4, &buf_dbg);
-                if (round == PARAM_K)
+                        if (round == PARAM_K)
                     {
                         check_clSetKernelArg(k_rounds[round], 5, &buf_sols);
                         /* per-round counters come next */
                         check_clSetKernelArg(k_rounds[round], 6, &buf_round_collisions);
                         check_clSetKernelArg(k_rounds[round], 7, &buf_round_stored);
                         check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg);
-                        check_clSetKernelArg(k_rounds[round], 9, &buf_extraction_dbg_counter);
+                        check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg_counter);
+                        check_clSetKernelArg(k_rounds[round], 9, &buf_snapshots);
+                        check_clSetKernelArg(k_rounds[round], 10, &buf_snapshot_counter);
+                        check_clSetKernelArg(k_rounds[round], 11, &buf_snapshot_seq);
                     }
                 else
                     {
@@ -997,7 +1015,10 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                         check_clSetKernelArg(k_rounds[round], 5, &buf_round_collisions);
                         check_clSetKernelArg(k_rounds[round], 6, &buf_round_stored);
                         check_clSetKernelArg(k_rounds[round], 7, &buf_extraction_dbg);
-                        check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg_counter);
+                                check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg_counter);
+                                check_clSetKernelArg(k_rounds[round], 9, &buf_snapshots);
+                                check_clSetKernelArg(k_rounds[round], 10, &buf_snapshot_counter);
+                                check_clSetKernelArg(k_rounds[round], 11, &buf_snapshot_seq);
                     }
                 global_ws = NR_ROWS;
 	  }
@@ -1153,7 +1174,7 @@ void mining_parse_job(char *str, uint8_t *target, size_t target_len,
 void mining_mode(cl_context ctx, cl_command_queue queue,
     cl_kernel k_init_ht, cl_kernel *k_rounds, cl_kernel k_sols,
     cl_mem *buf_ht, cl_mem buf_sols, cl_mem buf_dbg, size_t dbg_size,
-    uint8_t *header, cl_mem *rowCounters, cl_mem buf_extraction_dbg, size_t extraction_dbg_size, cl_mem buf_extraction_dbg_counter, size_t extraction_dbg_counter_size, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored)
+    uint8_t *header, cl_mem *rowCounters, cl_mem buf_extraction_dbg, size_t extraction_dbg_size, cl_mem buf_extraction_dbg_counter, size_t extraction_dbg_counter_size, cl_mem buf_snapshots, cl_mem buf_snapshot_counter, cl_mem buf_snapshot_seq, cl_mem buf_potential_cnt, cl_mem buf_round_collisions, cl_mem buf_round_stored)
 {
     char		line[4096];
     uint8_t		target[SHA256_DIGEST_SIZE];
@@ -1175,7 +1196,7 @@ void mining_mode(cl_context ctx, cl_command_queue queue,
                     header, ZCASH_BLOCK_HEADER_LEN,
                     &fixed_nonce_bytes);
         total += solve_equihash(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, ZCASH_BLOCK_HEADER_LEN, 1,
+            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_snapshots, buf_snapshot_counter, buf_snapshot_seq, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, ZCASH_BLOCK_HEADER_LEN, 1,
             fixed_nonce_bytes, target, job_id, &shares, rowCounters);
         total_shares += shares;
         if ((t1 = now()) > t0 + status_period)
@@ -1191,7 +1212,7 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
         cl_command_queue queue, cl_kernel k_init_ht, cl_kernel *k_rounds,
 	cl_kernel k_sols)
 {
-    cl_mem              buf_ht[2], buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, rowCounters[2];
+    cl_mem              buf_ht[2], buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_snapshots, buf_snapshot_counter, rowCounters[2];
     void                *dbg = NULL;
 #ifdef ENABLE_DEBUG
     // Each kernel thread writes two debug_t slots (debug[tid*2], debug[tid*2+1]).
@@ -1227,6 +1248,30 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     if (!potential_cnt_host) fatal("malloc: %s\n", strerror(errno));
     cl_mem buf_potential_cnt = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, sizeof(uint32_t), potential_cnt_host);
+    /* per-insert snapshots (device-side buffer of 4x64-bit words per entry + metadata: thread_id, table_half, seq) */
+    #define SNAPSHOT_ENTRIES_HOST 65536
+    uint64_t *snapshot_host = calloc(SNAPSHOT_ENTRIES_HOST * 8, sizeof(uint64_t));
+    uint32_t *snapshot_counter_host = calloc(1, sizeof(uint32_t));
+    uint32_t *snapshot_seq_host = calloc(1, sizeof(uint32_t));
+    if (!snapshot_host || !snapshot_counter_host || !snapshot_seq_host) fatal("malloc: %s\n", strerror(errno));
+    buf_snapshots = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        SNAPSHOT_ENTRIES_HOST * 8 * sizeof(uint64_t), snapshot_host);
+    buf_snapshot_counter = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        sizeof(uint32_t), snapshot_counter_host);
+    cl_mem buf_snapshot_seq = check_clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        sizeof(uint32_t), snapshot_seq_host);
+    /* reset device-side extraction and snapshot counters + clear snapshot buffer */
+    {
+        uint32_t zero_u = 0;
+        check_clEnqueueWriteBuffer(queue, buf_extraction_dbg_counter, CL_TRUE,
+            0, sizeof(zero_u), &zero_u, 0, NULL, NULL);
+        check_clEnqueueWriteBuffer(queue, buf_snapshot_counter, CL_TRUE,
+            0, sizeof(zero_u), &zero_u, 0, NULL, NULL);
+        check_clEnqueueWriteBuffer(queue, buf_snapshot_seq, CL_TRUE,
+            0, sizeof(zero_u), &zero_u, 0, NULL, NULL);
+        check_clEnqueueWriteBuffer(queue, buf_snapshots, CL_TRUE,
+            0, SNAPSHOT_ENTRIES_HOST * 8 * sizeof(uint64_t), snapshot_host, 0, NULL, NULL);
+    }
     /* per-round counters (host + device) */
     uint32_t *round_collisions_host = calloc(PARAM_K + 1, sizeof(uint32_t));
     uint32_t *round_stored_host = calloc(PARAM_K + 1, sizeof(uint32_t));
@@ -1245,14 +1290,14 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
         (NR_ROWS / ROWS_PER_UINT) * sizeof(uint32_t), NULL);
     if (mining)
         mining_mode(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-        buf_sols, buf_dbg, dbg_size, header, rowCounters, buf_extraction_dbg, extraction_dbg_size, buf_extraction_dbg_counter, extraction_dbg_counter_size, buf_potential_cnt, buf_round_collisions, buf_round_stored);
+        buf_sols, buf_dbg, dbg_size, header, rowCounters, buf_extraction_dbg, extraction_dbg_size, buf_extraction_dbg_counter, extraction_dbg_counter_size, buf_snapshots, buf_snapshot_counter, buf_snapshot_seq, buf_potential_cnt, buf_round_collisions, buf_round_stored);
     fprintf(stderr, "Running...\n");
     total = 0;
     uint64_t t0 = now();
     // Solve Equihash for a few nonces
     for (nonce = 0; nonce < nr_nonces; nonce++)
         total += solve_equihash(ctx, queue, k_init_ht, k_rounds, k_sols, buf_ht,
-            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, header_len, !!nonce,
+            buf_sols, buf_dbg, buf_extraction_dbg, buf_extraction_dbg_counter, buf_snapshots, buf_snapshot_counter, buf_snapshot_seq, buf_potential_cnt, buf_round_collisions, buf_round_stored, dbg_size, header, header_len, !!nonce,
             0, NULL, NULL, NULL, rowCounters);
     uint64_t t1 = now();
     fprintf(stderr, "Total %" PRId64 " solutions in %.1f ms (%.1f Sol/s)\n",
@@ -1291,6 +1336,14 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
             if (!sample) fatal("malloc: %s\n", strerror(errno));
             check_clEnqueueReadBuffer(queue, buf_extraction_dbg, CL_TRUE,
                 0, to_read * sizeof (*sample), sample, 0, NULL, NULL);
+                /* dump extraction debug samples to disk for offline analysis */
+                {
+                    char fname_ex[256];
+                    uint64_t ts_ex = now();
+                    snprintf(fname_ex, sizeof(fname_ex), "extraction_dbg_%" PRIu64 ".bin", ts_ex);
+                    dump(fname_ex, sample, to_read * sizeof (*sample));
+                    fprintf(stderr, "Wrote extraction debug dump %s (%zu entries)\n", fname_ex, to_read);
+                }
             size_t show = to_read < 32 ? to_read : 32;
             for (size_t i = 0; i < show; i++)
             {
@@ -1298,6 +1351,39 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
                     i, sample[i].round, sample[i].thread_id, sample[i].row, sample[i].slot, sample[i].status, sample[i].table_half, (uint64_t)sample[i].xi_sig,
                     (uint64_t)sample[i].xi0, (uint64_t)sample[i].xi1, (uint64_t)sample[i].xi2, (uint64_t)sample[i].xi3,
                     (uint64_t)sample[i].stored0, (uint64_t)sample[i].stored1, (uint64_t)sample[i].stored2, (uint64_t)sample[i].stored3);
+            }
+            /* Read snapshots (if any). Prefer the number of extracted debug
+             * entries as snapshots are written at the extraction_dbg index. */
+            {
+                uint32_t dbg_count = 0;
+                check_clEnqueueReadBuffer(queue, buf_extraction_dbg_counter, CL_TRUE,
+                    0, sizeof(dbg_count), &dbg_count, 0, NULL, NULL);
+                if (dbg_count > EXTRACTION_DEBUG_ENTRIES)
+                    dbg_count = EXTRACTION_DEBUG_ENTRIES;
+                fprintf(stderr, "extraction_dbg_count = %u\n", dbg_count);
+                if (dbg_count > 0) {
+                    size_t to_read_s = dbg_count;
+                    if (to_read_s > SNAPSHOT_ENTRIES_HOST)
+                        to_read_s = SNAPSHOT_ENTRIES_HOST;
+                    uint64_t *sbuf = malloc(to_read_s * 8 * sizeof(uint64_t));
+                        if (sbuf) {
+                        check_clEnqueueReadBuffer(queue, buf_snapshots, CL_TRUE,
+                            0, to_read_s * 8 * sizeof(uint64_t), sbuf, 0, NULL, NULL);
+                        /* write full snapshot buffer to disk for offline analysis */
+                        {
+                            char fname[256];
+                            uint64_t ts = now();
+                            snprintf(fname, sizeof(fname), "snapshots_%" PRIu64 ".bin", ts);
+                            dump(fname, sbuf, to_read_s * 8 * sizeof(uint64_t));
+                            fprintf(stderr, "Wrote snapshot dump %s (%zu entries)\n", fname, to_read_s);
+                        }
+                        for (size_t si = 0; si < (to_read_s > 64 ? 64 : to_read_s); si++) {
+                            fprintf(stderr, "SNAP[%zu]: %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " tid=%" PRIu64 " half=%" PRIu64 " marker=%" PRIu64 "\n",
+                                si, sbuf[si*8+0], sbuf[si*8+1], sbuf[si*8+2], sbuf[si*8+3], sbuf[si*8+4], sbuf[si*8+5], sbuf[si*8+6]);
+                        }
+                        free(sbuf);
+                    }
+                }
             }
             /* Quick validation: try multiple xi0 reconstructions and compare rows */
             {
@@ -1486,6 +1572,9 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     clReleaseMemObject(buf_dbg);
     clReleaseMemObject(buf_extraction_dbg);
     clReleaseMemObject(buf_extraction_dbg_counter);
+    clReleaseMemObject(buf_snapshots);
+    clReleaseMemObject(buf_snapshot_counter);
+    clReleaseMemObject(buf_snapshot_seq);
     clReleaseMemObject(buf_sols);
     clReleaseMemObject(buf_potential_cnt);
     clReleaseMemObject(buf_round_collisions);
@@ -1496,6 +1585,10 @@ void run_opencl(uint8_t *header, size_t header_len, cl_context ctx,
     clReleaseMemObject(rowCounters[1]);
     if (potential_cnt_host)
         free(potential_cnt_host);
+    /* free per-insert snapshot host buffers */
+    if (snapshot_host) free(snapshot_host);
+    if (snapshot_counter_host) free(snapshot_counter_host);
+    if (snapshot_seq_host) free(snapshot_seq_host);
     /* free per-round host buffers */
     if (round_collisions_host)
         free(round_collisions_host);
