@@ -2,6 +2,8 @@
 
 /* Enable extra kernel-side diagnostics: extraction debug and per-round counters */
 #define DEBUG_EXTRACTION
+/* Enable forced per-work-item snapshot writes for diagnostics */
+#define DEBUG_FORCE_SNAPSHOT
 
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
@@ -420,7 +422,38 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 		}
 	}
 #endif
-    ulong               v[16];
+/*
+ * Optional debug: force every work-item to emit a snapshot entry so we can
+ * validate snapshot counter/seq atomics and host readback independently of
+ * the store path. Enable by defining DEBUG_FORCE_SNAPSHOT when building.
+ */
+#ifdef DEBUG_FORCE_SNAPSHOT
+	{
+		uint __g = get_global_id(0);
+		/* allocate one snapshot slot per emitter via atomic_inc */
+		if (snapshot_counter) {
+			uint __sidx = atomic_inc(snapshot_counter);
+			if (__sidx < SNAPSHOT_ENTRIES) {
+				ulong base_idx = (ulong)__sidx * 8UL;
+				snapshot_buf[base_idx + 0] = (ulong)__g; /* test payload */
+				snapshot_buf[base_idx + 1] = (ulong)0xfeedfacecafebabeULL;
+				snapshot_buf[base_idx + 2] = (ulong)0x0123456789abcdefULL;
+				snapshot_buf[base_idx + 3] = 0UL;
+				snapshot_buf[base_idx + 4] = (ulong)__g; /* thread id */
+				snapshot_buf[base_idx + 5] = 0UL; /* table half */
+				snapshot_buf[base_idx + 6] = ((ulong)__g << 32) | (ulong)__sidx; /* marker */
+				if (snapshot_seq_counter) {
+					uint __seq = atomic_inc(snapshot_seq_counter);
+					snapshot_buf[base_idx + 7] = (ulong)__seq;
+				} else {
+					snapshot_buf[base_idx + 7] = 0UL;
+				}
+			}
+		}
+	}
+#endif
+
+	ulong               v[16];
     uint                inputs_per_thread = NR_INPUTS / get_global_size(0);
     uint                input = tid * inputs_per_thread;
     uint                input_end = (tid + 1) * inputs_per_thread;
