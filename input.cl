@@ -208,7 +208,13 @@ uint ht_store(uint round, __global char *ht, uint i,
 							 /* Use the extraction debug index as a stable per-snapshot seq */
 								 /* deterministic per-snapshot marker: thread_id<<32 | idx */
 								 snapshot_buf[idx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)idx;
-							 snapshot_buf[idx * 8 + 7] = 0; /* reserved */
+								/* record a monotonic device-side sequence for this snapshot */
+								if (snapshot_seq_counter) {
+									uint seqv = atomic_inc(snapshot_seq_counter);
+									snapshot_buf[idx * 8 + 7] = (ulong)seqv;
+								} else {
+									snapshot_buf[idx * 8 + 7] = 0; /* reserved */
+								}
 							}
 								/* snapshot the stored words */
 								if (snapshot_counter) {
@@ -222,7 +228,12 @@ uint ht_store(uint round, __global char *ht, uint i,
 										snapshot_buf[sidx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
 										/* deterministic per-snapshot marker: thread_id<<32 | sidx */
 										snapshot_buf[sidx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)sidx;
-										snapshot_buf[sidx * 8 + 7] = 0;
+										if (snapshot_seq_counter) {
+											uint seqv = atomic_inc(snapshot_seq_counter);
+											snapshot_buf[sidx * 8 + 7] = (ulong)seqv;
+										} else {
+											snapshot_buf[sidx * 8 + 7] = 0;
+										}
 									}
 								}
 						/* also store a short snapshot (4x64-bit words) for host-side per-insert inspection */
