@@ -29,8 +29,14 @@ typedef struct extraction_debug_s {
 #endif
 
 #ifdef DEBUG_EXTRACTION
-#define HT_DBG_ARGS , __global extraction_debug_t *extraction_dbg, __global uint *extraction_dbg_counter
-#define HT_DBG_PASS , extraction_dbg, extraction_dbg_counter
+/* Per-insert snapshots (store first 32 bytes of the slot for each insert) */
+#define SNAPSHOT_ENTRIES 65536
+#endif
+
+#ifdef DEBUG_EXTRACTION
+/* Add an extra device-side counter for per-snapshot sequencing */
+#define HT_DBG_ARGS , __global extraction_debug_t *extraction_dbg, __global uint *extraction_dbg_counter, __global ulong *snapshot_buf, __global uint *snapshot_counter, __global uint *snapshot_seq_counter
+#define HT_DBG_PASS , extraction_dbg, extraction_dbg_counter, snapshot_buf, snapshot_counter, snapshot_seq_counter
 #else
 #define HT_DBG_ARGS
 #define HT_DBG_PASS
@@ -98,6 +104,9 @@ void kernel_init_ht(__global char *ht, __global uint *rowCounters)
 **
 ** Return 0 if successfully stored, or 1 if the row overflowed.
 */
+/* forward declaration so ht_store can call half_aligned_long */
+ulong half_aligned_long(__global ulong *p, uint offset);
+
 uint ht_store(uint round, __global char *ht, uint i,
 	ulong xi0, ulong xi1, ulong xi2, ulong xi3, __global uint *rowCounters ROUND_CNT_ARGS HT_DBG_ARGS)
 {
@@ -145,9 +154,9 @@ uint ht_store(uint round, __global char *ht, uint i,
 	ulong dbg_xi2 = xi2;
 	ulong dbg_xi3 = xi3;
 #endif
-	xi0 = (xi0 >> 16) | (xi1 << (64 - 16));
-	xi1 = (xi1 >> 16) | (xi2 << (64 - 16));
-	xi2 = (xi2 >> 16) | (xi3 << (64 - 16));
+	xi0 = (xi0 >> 24) | (xi1 << (64 - 24));
+	xi1 = (xi1 >> 24) | (xi2 << (64 - 24));
+	xi2 = (xi2 >> 24) | (xi3 << (64 - 24));
     p = ht + row * NR_SLOTS * SLOT_LEN;
     uint rowIdx = row/ROWS_PER_UINT;
     uint rowOffset = BITS_PER_ROW*(row%ROWS_PER_UINT);
@@ -160,11 +169,9 @@ uint ht_store(uint round, __global char *ht, uint i,
 	atomic_sub(rowCounters + rowIdx, 1 << rowOffset);
 			/* Log overflow attempt (sample round 0 to avoid saturation) */
 			#ifdef DEBUG_EXTRACTION
-			{
-				uint do_log = 1;
-				/* do not log round-0 events here to prioritise later rounds */
-				if (round == 0) do_log = 0;
-				if (do_log) {
+				{
+					uint do_log = 1;
+					if (do_log) {
 					uint idx = atomic_inc(extraction_dbg_counter);
 					if (idx < EXTRACTION_DEBUG_ENTRIES)
 					{
@@ -177,12 +184,61 @@ uint ht_store(uint round, __global char *ht, uint i,
 						extraction_dbg[idx].xi2 = dbg_xi2;
 						extraction_dbg[idx].xi3 = dbg_xi3;
 						extraction_dbg[idx].status = 3; /* overflow */
-						extraction_dbg[idx].stored0 = xi0;
-						extraction_dbg[idx].stored1 = xi1;
-						extraction_dbg[idx].stored2 = xi2;
-						extraction_dbg[idx].stored3 = xi3;
+						/* copy first 32 bytes as actually written into HT */
+						extraction_dbg[idx].stored0 = half_aligned_long((__global ulong *)p, 0);
+						extraction_dbg[idx].stored1 = half_aligned_long((__global ulong *)p, 8);
+						extraction_dbg[idx].stored2 = half_aligned_long((__global ulong *)p, 16);
+						extraction_dbg[idx].stored3 = half_aligned_long((__global ulong *)p, 24);
 						extraction_dbg[idx].table_half = round & 1;
 						extraction_dbg[idx].xi_sig = dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3;
+							/* For diagnostics: write snapshot indexed by extraction dbg index
+							 * This avoids relying on snapshot_counter atomic increments which
+							 * may not be available/working on some drivers. We store at idx
+							 * so snapshots correspond 1:1 with extraction_dbg entries (up to
+							 * EXTRACTION_DEBUG_ENTRIES). */
+							if (snapshot_buf) {
+							 /* store 4x64-bit stored words then metadata: thread_id, table_half, seq */
+							 snapshot_buf[idx * 8 + 0] = extraction_dbg[idx].stored0;
+							 snapshot_buf[idx * 8 + 1] = extraction_dbg[idx].stored1;
+							 snapshot_buf[idx * 8 + 2] = extraction_dbg[idx].stored2;
+							 snapshot_buf[idx * 8 + 3] = extraction_dbg[idx].stored3;
+							 snapshot_buf[idx * 8 + 4] = (ulong)extraction_dbg[idx].thread_id;
+							 snapshot_buf[idx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
+							 /* per-snapshot seq (increment device-side counter) */
+							 /* Use the extraction debug index as a stable per-snapshot seq */
+								 /* deterministic per-snapshot marker: thread_id<<32 | idx */
+								 snapshot_buf[idx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)idx;
+							 snapshot_buf[idx * 8 + 7] = 0; /* reserved */
+							}
+								/* snapshot the stored words */
+								if (snapshot_counter) {
+									uint sidx = atomic_inc(snapshot_counter);
+									if (sidx < SNAPSHOT_ENTRIES) {
+										snapshot_buf[sidx * 8 + 0] = extraction_dbg[idx].stored0;
+										snapshot_buf[sidx * 8 + 1] = extraction_dbg[idx].stored1;
+										snapshot_buf[sidx * 8 + 2] = extraction_dbg[idx].stored2;
+										snapshot_buf[sidx * 8 + 3] = extraction_dbg[idx].stored3;
+										snapshot_buf[sidx * 8 + 4] = (ulong)extraction_dbg[idx].thread_id;
+										snapshot_buf[sidx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
+										/* deterministic per-snapshot marker: thread_id<<32 | sidx */
+										snapshot_buf[sidx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)sidx;
+										snapshot_buf[sidx * 8 + 7] = 0;
+									}
+								}
+						/* also store a short snapshot (4x64-bit words) for host-side per-insert inspection */
+						if (snapshot_counter) {
+							uint sidx = atomic_inc(snapshot_counter);
+							if (sidx < SNAPSHOT_ENTRIES) {
+								snapshot_buf[sidx * 8 + 0] = extraction_dbg[idx].stored0;
+								snapshot_buf[sidx * 8 + 1] = extraction_dbg[idx].stored1;
+								snapshot_buf[sidx * 8 + 2] = extraction_dbg[idx].stored2;
+								snapshot_buf[sidx * 8 + 3] = extraction_dbg[idx].stored3;
+								snapshot_buf[sidx * 8 + 4] = (ulong)extraction_dbg[idx].thread_id;
+								snapshot_buf[sidx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
+								snapshot_buf[sidx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)sidx;
+								snapshot_buf[sidx * 8 + 7] = 0;
+							}
+						}
 					}
 				}
 			}
@@ -232,10 +288,8 @@ uint ht_store(uint round, __global char *ht, uint i,
 		*(__global uint *)(p + 4) = (xi0 >> 32);
 			}
 	#ifdef DEBUG_EXTRACTION
-		{
+				{
 				uint do_log = 1;
-				/* do not log round-0 stored events here to prioritise later rounds */
-				if (round == 0) do_log = 0;
 			if (do_log) {
 				uint idx = atomic_inc(extraction_dbg_counter);
 				if (idx < EXTRACTION_DEBUG_ENTRIES)
@@ -250,10 +304,10 @@ uint ht_store(uint round, __global char *ht, uint i,
 					extraction_dbg[idx].xi3 = dbg_xi3;
 					extraction_dbg[idx].status = 2; /* stored */
 					/* copy first 32 bytes of stored slot for offline inspection */
-					extraction_dbg[idx].stored0 = xi0;
-					extraction_dbg[idx].stored1 = xi1;
-					extraction_dbg[idx].stored2 = xi2;
-					extraction_dbg[idx].stored3 = xi3;
+					extraction_dbg[idx].stored0 = half_aligned_long((__global ulong *)p, 0);
+					extraction_dbg[idx].stored1 = half_aligned_long((__global ulong *)p, 8);
+					extraction_dbg[idx].stored2 = half_aligned_long((__global ulong *)p, 16);
+					extraction_dbg[idx].stored3 = half_aligned_long((__global ulong *)p, 24);
 					extraction_dbg[idx].table_half = round & 1;
 					extraction_dbg[idx].xi_sig = dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3;
 				}
@@ -290,6 +344,53 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	__global uint *rowCounters, __global uint *debug ROUND_CNT_ARGS HT_DBG_ARGS)
 {
     uint                tid = get_global_id(0);
+	/* Deterministic self-test: thread 0 writes a known 32-byte pattern into
+	 * a chosen slot at the Xi offset and reads it back into extraction_dbg[0]
+	 * so the host can verify offsets/endianness directly. Enabled only when
+	 * DEBUG_EXTRACTION is defined. */
+#ifdef DEBUG_EXTRACTION
+	if (tid == 0) {
+		uint test_row = 0; /* choose row 0 for deterministic test */
+		uint test_slot = 0; /* choose slot 0 */
+		uint test_round = 0; /* use round 0 xi_offset */
+		__global char *base = ht + test_row * NR_SLOTS * SLOT_LEN + test_slot * SLOT_LEN + xi_offset_for_round(test_round);
+		/* write four distinct 8-byte words so they're easy to spot */
+		*(__global ulong *)(base + 0) = (ulong)0x1122334455667788ULL;
+		*(__global ulong *)(base + 8) = (ulong)0x99aabbccddeeff00ULL;
+		*(__global ulong *)(base + 16) = (ulong)0x0102030405060708ULL;
+		*(__global ulong *)(base + 24) = (ulong)0xdeadbeefcafebabeULL;
+		/* read back via half_aligned_long and record into extraction_dbg[0] */
+		uint idx = atomic_inc(extraction_dbg_counter);
+		if (idx < EXTRACTION_DEBUG_ENTRIES) {
+			extraction_dbg[idx].round = test_round;
+			extraction_dbg[idx].thread_id = tid;
+			extraction_dbg[idx].row = test_row;
+			extraction_dbg[idx].slot = test_slot;
+			extraction_dbg[idx].xi0 = 0; extraction_dbg[idx].xi1 = 0; extraction_dbg[idx].xi2 = 0; extraction_dbg[idx].xi3 = 0;
+			extraction_dbg[idx].status = 0xdeadbeef;
+			extraction_dbg[idx].stored0 = half_aligned_long((__global ulong *)base, 0);
+			extraction_dbg[idx].stored1 = half_aligned_long((__global ulong *)base, 8);
+			extraction_dbg[idx].stored2 = half_aligned_long((__global ulong *)base, 16);
+			extraction_dbg[idx].stored3 = half_aligned_long((__global ulong *)base, 24);
+			extraction_dbg[idx].table_half = test_round & 1;
+			extraction_dbg[idx].xi_sig = 0x123456789abcdef0ULL;
+				/* also snapshot deterministic test pattern */
+				if (snapshot_counter) {
+					uint sidx = atomic_inc(snapshot_counter);
+					if (sidx < SNAPSHOT_ENTRIES) {
+						snapshot_buf[sidx * 8 + 0] = extraction_dbg[idx].stored0;
+						snapshot_buf[sidx * 8 + 1] = extraction_dbg[idx].stored1;
+						snapshot_buf[sidx * 8 + 2] = extraction_dbg[idx].stored2;
+						snapshot_buf[sidx * 8 + 3] = extraction_dbg[idx].stored3;
+						snapshot_buf[sidx * 8 + 4] = (ulong)extraction_dbg[idx].thread_id;
+						snapshot_buf[sidx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
+						snapshot_buf[sidx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)sidx;
+						snapshot_buf[sidx * 8 + 7] = 0;
+					}
+				}
+		}
+	}
+#endif
     ulong               v[16];
     uint                inputs_per_thread = NR_INPUTS / get_global_size(0);
     uint                input = tid * inputs_per_thread;
@@ -449,17 +550,51 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 		h[1],
 		h[2],
 		h[3], rowCounters ROUND_CNT_PASS HT_DBG_PASS);
+	/* For Equihash 192,7 the two Xi values align on 8-byte boundaries
+	 * and must be passed raw (no 8-bit rotations). The previous shifts
+	 * were intended for other parameterizations and corrupt the stored
+	 * bytes for n=192,k=7. */
 	dropped += ht_store(0, ht, input * 2 + 1,
-		(h[3] >> 8) | (h[4] << (64 - 8)),
-		(h[4] >> 8) | (h[5] << (64 - 8)),
-		(h[5] >> 8) | (h[6] << (64 - 8)),
-		(h[6] >> 8), rowCounters ROUND_CNT_PASS HT_DBG_PASS);
+		h[3],
+		h[4],
+		h[5],
+		h[6], rowCounters ROUND_CNT_PASS HT_DBG_PASS);
 #else
 #error "unsupported ZCASH_HASH_LEN"
 #endif
 
 	input++;
       }
+#ifdef DEBUG_EXTRACTION
+	/* Persist deterministic test pattern into HT after main loop so host dump
+	 * taken later can observe the exact bytes. Thread 0 writes the pattern
+	 * into row 0 slot 0 at the xi offset for round 0. */
+	if (tid == 0) {
+		uint test_row = 0;
+		uint test_slot = 0;
+		uint test_round = 0;
+		__global char *base = ht + test_row * NR_SLOTS * SLOT_LEN + test_slot * SLOT_LEN + xi_offset_for_round(test_round);
+		*(__global ulong *)(base + 0) = (ulong)0x1122334455667788ULL;
+		*(__global ulong *)(base + 8) = (ulong)0x99aabbccddeeff00ULL;
+		*(__global ulong *)(base + 16) = (ulong)0x0102030405060708ULL;
+		*(__global ulong *)(base + 24) = (ulong)0xdeadbeefcafebabeULL;
+		/* optional: also log an extraction_dbg entry indicating persistent write */
+		uint idx2 = atomic_inc(extraction_dbg_counter);
+		if (idx2 < EXTRACTION_DEBUG_ENTRIES) {
+			extraction_dbg[idx2].round = test_round;
+			extraction_dbg[idx2].thread_id = tid;
+			extraction_dbg[idx2].row = test_row;
+			extraction_dbg[idx2].slot = test_slot;
+			extraction_dbg[idx2].status = 0xfeedface;
+			extraction_dbg[idx2].stored0 = half_aligned_long((__global ulong *)base, 0);
+			extraction_dbg[idx2].stored1 = half_aligned_long((__global ulong *)base, 8);
+			extraction_dbg[idx2].stored2 = half_aligned_long((__global ulong *)base, 16);
+			extraction_dbg[idx2].stored3 = half_aligned_long((__global ulong *)base, 24);
+			extraction_dbg[idx2].table_half = test_round & 1;
+			extraction_dbg[idx2].xi_sig = 0xf00dbabecafef00dULL;
+		}
+	}
+#endif
 #ifdef ENABLE_DEBUG
     debug[tid * 2] = 0;
     debug[tid * 2 + 1] = dropped;
@@ -511,6 +646,9 @@ ulong half_aligned_long(__global ulong *p, uint offset)
 	(((ulong)*(__global uint *)((__global char *)p + offset + 0)) << 0) |
 	(((ulong)*(__global uint *)((__global char *)p + offset + 4)) << 32);
 }
+
+/* forward declaration so ht_store (which appears earlier) can call it */
+ulong half_aligned_long(__global ulong *p, uint offset);
 
 /*
 ** Access a well-aligned int.
