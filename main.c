@@ -1004,10 +1004,10 @@ uint32_t solve_equihash(cl_context ctx, cl_command_queue queue,
                         check_clSetKernelArg(k_rounds[round], 6, &buf_round_collisions);
                         check_clSetKernelArg(k_rounds[round], 7, &buf_round_stored);
                         check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg);
-                        check_clSetKernelArg(k_rounds[round], 8, &buf_extraction_dbg_counter);
-                        check_clSetKernelArg(k_rounds[round], 9, &buf_snapshots);
-                        check_clSetKernelArg(k_rounds[round], 10, &buf_snapshot_counter);
-                        check_clSetKernelArg(k_rounds[round], 11, &buf_snapshot_seq);
+                        check_clSetKernelArg(k_rounds[round], 9, &buf_extraction_dbg_counter);
+                        check_clSetKernelArg(k_rounds[round], 10, &buf_snapshots);
+                        check_clSetKernelArg(k_rounds[round], 11, &buf_snapshot_counter);
+                        check_clSetKernelArg(k_rounds[round], 12, &buf_snapshot_seq);
                     }
                 else
                     {
