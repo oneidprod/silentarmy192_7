@@ -4,6 +4,6 @@
 export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/beignet":$LD_LIBRARY_PATH
 
 #./sa-solver -n 192 -k 7
-./sa-solver -n 192 -k 7 --use 0 --nonces 5 -v
+./sa-solver -n 192 -k 7 --use 0 --nonces 1 -v
 #./sa-solver -n 200 -k 9
 #./sa-solver -h

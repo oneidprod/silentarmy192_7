@@ -1,0 +1,75 @@
+Connecting to equihash192.na.mine.zpool.ca:2192
+Solver 0.0: launching
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1f39c"
+Stratum server sent us the first job
+Mining on 1 device
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Total 0.0 sol/s [dev0 0.0] 5 shares
+Stratum server returned an error: [25, 'Invalid share', None]
+Total 152.9 sol/s [dev0 198.7] 8 shares
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Total 142.0 sol/s [dev0 198.7] 8 shares
+Total 132.5 sol/s [dev0 198.7] 8 shares
+Total 124.2 sol/s [dev0 198.7] 8 shares
+Total 116.9 sol/s [dev0 198.7] 8 shares
+Total 110.4 sol/s [dev0 198.7] 8 shares
+Total 104.6 sol/s [dev0 198.7] 8 shares
+Total 99.4 sol/s [dev0 198.7] 8 shares
+Total 94.6 sol/s [dev0 198.7] 8 shares
+Total 90.3 sol/s [dev0 198.7] 8 shares
+Total 86.4 sol/s [dev0 0.0] 8 shares
+Total 82.8 sol/s [dev0 0.0] 8 shares
+Total 79.5 sol/s [dev0 0.0] 8 shares
+Total 76.4 sol/s [dev0 0.0] 8 shares
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 147.3 sol/s [dev0 199.1] 16 shares
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 2)
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Total 142.1 sol/s [dev0 199.1] 16 shares
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1797"
+Total 137.2 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 199.1] 16 shares
+Total 132.6 sol/s [dev0 0.0] 16 shares
+Total 132.6 sol/s [dev0 0.0] 16 shares
+Total 132.6 sol/s [dev0 0.0] 16 shares
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Total 198.9 sol/s [dev0 198.7] 24 shares
+Total 198.9 sol/s [dev0 198.7] 24 shares
+Total 198.8 sol/s [dev0 198.7] 24 shares
+Total 132.6 sol/s [dev0 198.7] 24 shares
+Received job "179a"
+Total 132.6 sol/s [dev0 198.7] 24 shares

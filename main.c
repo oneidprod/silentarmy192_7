@@ -597,6 +597,7 @@ void init_ht(cl_command_queue queue, cl_kernel k_init_ht, cl_mem buf_ht,
 /** 
  * Write ZCASH_SOL_LEN bytes representing the encoded solution as per the
  * Equihash 192,7 protocol specs (128 x 25-bit inputs).
+ * Based on tromp/equihash reference implementation for correct bit packing.
  * 
  * out    ZCASH_SOL_LEN-byte buffer where the solution will be stored (400 bytes)
  * inputs array of 32-bit inputs (128 indices)
@@ -604,25 +605,22 @@ void init_ht(cl_command_queue queue, cl_kernel k_init_ht, cl_mem buf_ht,
  */
 void store_encoded_sol(uint8_t *out, uint32_t *inputs, uint32_t n)
 {
-        // Pack 128 x 25-bit indices into 400 bytes
-        uint32_t outpos = 0;
-        uint64_t acc = 0;
-        int acc_bits = 0;
-        for (uint32_t i = 0; i < n; ++i) {
-                acc |= ((uint64_t)inputs[i]) << acc_bits;
-                acc_bits += 25;
-                while (acc_bits >= 8) {
-                        out[outpos++] = acc & 0xFF;
-                        acc >>= 8;
-                        acc_bits -= 8;
+        // Revert to working tromp-style compression  
+        const uint32_t digitbits_plus_1 = 25;
+        uint8_t b;
+        uint32_t i, j;
+        uint32_t bits_left = digitbits_plus_1;
+        
+        for (i = 0, j = 0; j < ZCASH_SOL_LEN; out[j++] = b) {
+                if (bits_left >= 8) {
+                        b = inputs[i] >> (bits_left -= 8);
+                } else {
+                        b = inputs[i];
+                        b <<= (8 - bits_left);
+                        bits_left += digitbits_plus_1 - 8;
+                        b |= inputs[++i] >> bits_left;
                 }
         }
-        if (outpos < ZCASH_SOL_LEN) {
-                // Write any remaining bits (should only happen at the end)
-                out[outpos++] = acc & 0xFF;
-        }
-        // Zero any remaining bytes (should not be needed, but for safety)
-        while (outpos < ZCASH_SOL_LEN) out[outpos++] = 0;
 }
 
 /*
@@ -712,6 +710,75 @@ uint32_t print_solver_line(uint32_t *values, uint8_t *header,
     return 1;
 }
 
+/*
+** Blake2b version: For Zero coin mining with Blake2b block verification
+** Identical to print_solver_line() but uses Blake2b instead of double SHA256
+*/
+uint32_t print_solver_line_blake2b(uint32_t *values, uint8_t *header,
+	size_t fixed_nonce_bytes, uint8_t *target, char *job_id)
+{
+    uint8_t	buffer[ZCASH_BLOCK_HEADER_LEN + ZCASH_SOLSIZE_LEN +
+	ZCASH_SOL_LEN];
+    uint8_t	blake2b_hash[32];  // Blake2b-256 output
+    blake2b_state_t blake_state;
+    uint8_t	*p;
+    
+    // Build exact same buffer as SHA256 version
+    p = buffer;
+    memcpy(p, header, ZCASH_BLOCK_HEADER_LEN);
+    p += ZCASH_BLOCK_HEADER_LEN;
+    /* compact-encoded size for 400 bytes: 0xfd 0x90 0x01 */
+    memcpy(p, "\xfd\x90\x01", ZCASH_SOLSIZE_LEN);
+    p += ZCASH_SOLSIZE_LEN;
+    store_encoded_sol(p, values, 1 << PARAM_K);
+    
+    // Use Blake2b for Zero coin verification instead of double SHA256  
+    // Note: Blake2b can only process 128 bytes at a time
+    zcash_blake2b_init(&blake_state, 32, PARAM_N, PARAM_K);
+    
+    // Process the buffer in chunks of 128 bytes maximum
+    uint32_t remaining = sizeof(buffer);
+    uint8_t *p_chunk = buffer;
+    while (remaining > 0) {
+        uint32_t chunk_size = (remaining > 128) ? 128 : remaining;
+        uint32_t is_final_chunk = (remaining <= 128) ? 1 : 0;
+        zcash_blake2b_update(&blake_state, p_chunk, chunk_size, is_final_chunk);
+        p_chunk += chunk_size;
+        remaining -= chunk_size;
+    }
+    zcash_blake2b_final(&blake_state, blake2b_hash, 32);
+    
+    // Compare Blake2b hash with target (same comparison function)
+    debug("Blake2b comparison: Hash: %02x%02x%02x%02x vs Target: %02x%02x%02x%02x\n",
+          blake2b_hash[0], blake2b_hash[1], blake2b_hash[2], blake2b_hash[3],
+          target[0], target[1], target[2], target[3]);
+    if (cmp_target_256(target, blake2b_hash) < 0)
+      {
+	debug("Blake2b hash is above target\n");
+	debug("Hash:   %02x%02x%02x%02x%02x%02x%02x%02x...\n",
+	      blake2b_hash[0], blake2b_hash[1], blake2b_hash[2], blake2b_hash[3],
+	      blake2b_hash[4], blake2b_hash[5], blake2b_hash[6], blake2b_hash[7]);
+	debug("Target: %02x%02x%02x%02x%02x%02x%02x%02x...\n",
+	      target[0], target[1], target[2], target[3],
+	      target[4], target[5], target[6], target[7]);
+	return 0;
+      }
+    debug("Blake2b hash is under target\n");
+    debug("Accepted Hash: %02x%02x%02x%02x%02x%02x%02x%02x...\n",
+	  blake2b_hash[0], blake2b_hash[1], blake2b_hash[2], blake2b_hash[3],
+	  blake2b_hash[4], blake2b_hash[5], blake2b_hash[6], blake2b_hash[7]);
+    printf("sol: %s ", job_id);
+    p = header + ZCASH_BLOCK_OFFSET_NTIME;
+    printf("%02x%02x%02x%02x ", p[0], p[1], p[2], p[3]);
+    printf("%s ", s_hexdump(header + ZCASH_BLOCK_HEADER_LEN - ZCASH_NONCE_LEN +
+		fixed_nonce_bytes, ZCASH_NONCE_LEN - fixed_nonce_bytes));
+    printf("%s%s\n", ZCASH_SOLSIZE_HEX,
+	    s_hexdump(buffer + ZCASH_BLOCK_HEADER_LEN + ZCASH_SOLSIZE_LEN,
+		ZCASH_SOL_LEN));
+    fflush(stdout);
+    return 1;
+}
+
 int sol_cmp(const void *_a, const void *_b)
 {
     const uint32_t	*a = _a;
@@ -764,8 +831,8 @@ uint32_t print_sols(sols_t *all_sols, uint64_t *nonce, uint32_t nr_valid_sols,
 	if (verbose)
 	    print_sol(inputs, nonce);
 	if (mining)
-	    shares += print_solver_line(inputs, header, fixed_nonce_bytes,
-		    target, job_id);
+	    shares += print_solver_line_blake2b(inputs, header, fixed_nonce_bytes,
+		    target, job_id); // Use Blake2b for Zero coin mining
       }
     free(valid_sols);
     return shares;
@@ -795,6 +862,31 @@ void sort_pair(uint32_t *a, uint32_t len)
 }
 
 /*
+** Ensure Wagner ordering conditions are satisfied (required for valid Equihash solutions)
+** Based on tromp/equihash reference implementation
+*/
+void order_indices(uint32_t *indices, uint32_t size)
+{
+    if (size <= 1)
+        return;
+    
+    uint32_t half_size = size / 2;
+    // Recursively order both halves
+    order_indices(indices, half_size);
+    order_indices(indices + half_size, half_size);
+    
+    // Ensure Wagner condition: leftmost of left < leftmost of right
+    if (indices[0] > indices[half_size]) {
+        // Swap the two halves
+        for (uint32_t i = 0; i < half_size; i++) {
+            uint32_t tmp = indices[i];
+            indices[i] = indices[half_size + i];
+            indices[half_size + i] = tmp;
+        }
+    }
+}
+
+/*
 ** If solution is invalid return 0. If solution is valid, sort the inputs
 ** and return 1.
 */
@@ -805,6 +897,9 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i)
     uint8_t	seen[seen_len];
     uint32_t	i;
     uint8_t	tmp;
+    
+    // Apply Wagner ordering before verification
+    order_indices(inputs, 1 << PARAM_K);
     
     // Debug: print first few indices to understand the range  
     if (sol_i < 3) {

@@ -350,8 +350,13 @@ class Silentarmy:
             if decoded[0] == 'sol':
                 very_verbose('Solver %s: submitting share: %s' % \
                         (devid, str(decoded[1:])))
+                # decoded[1:] = (job_id, ntime, nonce_rightpart, sol)
+                job_id, ntime, nonce_rightpart, sol = decoded[1:]
+                # Prepend fd9001 prefix if not already present
+                if not sol.startswith('fd9001'):
+                    sol = 'fd9001' + sol
                 self.st_protocol.do_send(self.stratum_msg('mining.submit',
-                    *decoded[1:]))
+                    job_id, ntime, nonce_rightpart, sol))
             elif decoded[0] == 'status':
                 (nr_sols, nr_shares) = decoded[1:]
                 very_verbose('Solver %s: found %d sols %d shares so far' %
@@ -527,7 +532,15 @@ class Silentarmy:
                 elif msg['method'] == 'mining.notify':
                     # params: [ job_id, nVersion, hashPrevBlock, hashMerkleRoot,
                     #   hashReserved, nTime, nBits, clean_jobs ]
-                    self.set_new_job(*msg['params'][:8])
+                    # Some pools send additional algorithm identifier: [..., ?, algo_id, clean_jobs]
+                    params = msg['params']
+                    if len(params) >= 10:
+                        # Pool sends algorithm identifier, clean flag is at position 9
+                        job_params = params[:7] + [params[9]]  # Take first 7 + clean flag from position 9
+                    else:
+                        # Standard format, clean flag is at position 7
+                        job_params = params[:8]
+                    self.set_new_job(*job_params)
                     self.update_mining_job()
                 elif msg['method'] == 'client.reconnect':
                     print("Stratum server forcing a reconnection")
