@@ -2,8 +2,6 @@
 
 /* Enable extra kernel-side diagnostics: extraction debug and per-round counters */
 #define DEBUG_EXTRACTION
-/* Enable forced per-work-item snapshot writes for diagnostics */
-#define DEBUG_FORCE_SNAPSHOT
 
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
