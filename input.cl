@@ -862,8 +862,7 @@ void equihash_round(uint round,
 #if NR_ROWS_LOG == 16
     mask = ((!(round % 2)) ? 0x0f : 0xf0);
 #elif NR_ROWS_LOG == 18
-    // Equihash 192,7: Use 4-bit nibble collision detection instead of 2-bit
-    mask = ((!(round % 2)) ? 0x0F : 0xF0);
+    mask = ((!(round % 2)) ? 0x03 : 0x30);
 #elif NR_ROWS_LOG == 19
     mask = ((!(round % 2)) ? 0x01 : 0x10);
 #elif NR_ROWS_LOG == 20
