@@ -352,9 +352,9 @@ class Silentarmy:
                         (devid, str(decoded[1:])))
                 # decoded[1:] = (job_id, ntime, nonce_rightpart, sol)
                 job_id, ntime, nonce_rightpart, sol = decoded[1:]
-                # Prepend fd9001 prefix if not already present
-                if not sol.startswith('fd9001'):
-                    sol = 'fd9001' + sol
+                # Note: solver already includes fd9001 prefix, don't double-add
+                # if not sol.startswith('fd9001'):
+                #     sol = 'fd9001' + sol
                 self.st_protocol.do_send(self.stratum_msg('mining.submit',
                     job_id, ntime, nonce_rightpart, sol))
             elif decoded[0] == 'status':
