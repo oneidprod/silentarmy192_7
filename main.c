@@ -805,13 +805,24 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i)
     uint8_t	seen[seen_len];
     uint32_t	i;
     uint8_t	tmp;
+    
+    // Debug: print first few indices to understand the range  
+    if (sol_i < 3) {
+        fprintf(stderr, "Debug sol %d: indices[0-7] = ", sol_i);
+        for (i = 0; i < 8 && i < (1 << PARAM_K); i++)
+            fprintf(stderr, "%u ", inputs[i]);
+        fprintf(stderr, " ... max_expected=%u seen_len=%u\n", 
+                (1u << PREFIX) - 1, seen_len);
+    }
+    
     // look for duplicate inputs
     memset(seen, 0, seen_len);
     for (i = 0; i < (1 << PARAM_K); i++)
       {
 	if (inputs[i] / 8 >= seen_len)
 	  {
-	    warn("Invalid input retrieved from device: %d\n", inputs[i]);
+	    warn("Invalid input retrieved from device: %d (max_allowed=%d)\n", 
+                 inputs[i], seen_len * 8 - 1);
 	    sols->valid[sol_i] = 0;
 	    return 0;
 	  }

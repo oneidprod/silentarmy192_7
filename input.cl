@@ -1031,6 +1031,7 @@ uint expand_refs(uint *ins, uint nr_inputs, __global char **htabs,
 		DECODE_ROW(ins[i]), DECODE_SLOT0(ins[i]));
 	if (!round)
 	  {
+	    // Temporarily revert to original logic to test if comprehensive check is the issue
 	    if (dup_to_watch == -1)
 		dup_to_watch = ins[j];
 	    else if (ins[j] == dup_to_watch || ins[j - 1] == dup_to_watch)
