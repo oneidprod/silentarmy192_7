@@ -831,8 +831,8 @@ uint32_t print_sols(sols_t *all_sols, uint64_t *nonce, uint32_t nr_valid_sols,
 	if (verbose)
 	    print_sol(inputs, nonce);
 	if (mining)
-	    shares += print_solver_line_blake2b(inputs, header, fixed_nonce_bytes,
-		    target, job_id); // Use Blake2b for Zero coin mining
+	    shares += print_solver_line(inputs, header, fixed_nonce_bytes,
+		    target, job_id); // Use original double SHA256
       }
     free(valid_sols);
     return shares;

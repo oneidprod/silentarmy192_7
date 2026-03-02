@@ -1,0 +1,264 @@
+/home/mine/silentarmy192_7/./silentarmy:191: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def reconnect(self):
+/home/mine/silentarmy192_7/./silentarmy:210: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def show_stats(self):
+/home/mine/silentarmy192_7/./silentarmy:308: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def start_solvers(self, devid):
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver' stdin=<pipe> stdout=stderr=<pipe>
+DEBUG:asyncio:process '/home/mine/silentarmy192_7/sa-solver' created: pid 462857
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 3.703ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+DEBUG:asyncio:Write pipe 8 connected: (<_UnixWritePipeTransport fd=8 idle bufsize=0>, <WriteSubprocessPipeProto fd=0 pipe=<_UnixWritePipeTransport fd=8 idle bufsize=0>>)
+DEBUG:asyncio:Read pipe 6 connected: (<_UnixReadPipeTransport fd=6 polling>, <ReadSubprocessPipeProto fd=1 pipe=<_UnixReadPipeTransport fd=6 polling>>)
+INFO:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver': <_UnixSubprocessTransport pid=462857 running stdin=<_UnixWritePipeTransport fd=8 idle bufsize=0> stdout=<_UnixReadPipeTransport fd=6 polling>>
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 55122), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f063fac7e50>)
+Connecting to equihash192.na.mine.zpool.ca:2192
+Solver 0.0: launching
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1b03"
+Stratum server sent us the first job
+Mining on 1 device
+Received job "1b04"
+Total 0.0 sol/s [dev0 0.0] 11 shares
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 1989.7 sol/s [dev0 1989.7] 20 shares
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 2)
+Total 2984.9 sol/s [dev0 2984.9] 34 shares
+INFO:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 396.480ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 55130), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f063fac7e50>)
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1b04"
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 4643.3 sol/s [dev0 4643.3] 65 shares
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 1.446ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 3)
+Total 4477.6 sol/s [dev0 4477.6] 78 shares
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 55132), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f063fac7e50>)
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Stratum server returned an error: [25, 'Invalid share', None]
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1b04"
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 5174.1 sol/s [dev0 5174.1] 103 shares
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 1.576ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 55136), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f063fac7e50>)
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 4)
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Total 4975.1 sol/s [dev0 4975.1] 123 shares
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 5401.6 sol/s [dev0 5401.6] 158 shares
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 1.400ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 55140), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f063fac7e50>)
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 5)
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Total 5223.9 sol/s [dev0 5223.9] 175 shares
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "1f6ff"
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Total 5527.9 sol/s [dev0 5527.9] 211 shares
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 5373.1 sol/s [dev0 5373.1] 230 shares
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+WARNING:asyncio:socket.send() raised exception.
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 1.533ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
