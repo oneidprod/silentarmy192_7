@@ -862,7 +862,8 @@ void equihash_round(uint round,
 #if NR_ROWS_LOG == 16
     mask = ((!(round % 2)) ? 0x0f : 0xf0);
 #elif NR_ROWS_LOG == 18
-    mask = ((!(round % 2)) ? 0x03 : 0x30);
+    // Equihash 192,7: Use 4-bit nibble collision detection instead of 2-bit
+    mask = ((!(round % 2)) ? 0x0F : 0xF0);
 #elif NR_ROWS_LOG == 19
     mask = ((!(round % 2)) ? 0x01 : 0x10);
 #elif NR_ROWS_LOG == 20
@@ -1057,7 +1058,8 @@ void potential_sol(__global char **htabs, __global sols_t *sols,
     nr_values = 0;
     values_tmp[nr_values++] = ref0;
     values_tmp[nr_values++] = ref1;
-	uint round = PARAM_K;
+	// Start backtracking from PARAM_K-1 (round 6 for Equihash 192,7) 
+	uint round = PARAM_K - 1;
     do
       {
 	round--;
