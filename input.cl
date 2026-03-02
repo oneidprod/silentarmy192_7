@@ -339,6 +339,24 @@ uint ht_store(uint round, __global char *ht, uint i,
 					extraction_dbg[idx].stored3 = half_aligned_long((__global ulong *)p, 24);
 					extraction_dbg[idx].table_half = round & 1;
 					extraction_dbg[idx].xi_sig = dbg_xi0 ^ dbg_xi1 ^ dbg_xi2 ^ dbg_xi3;
+					/* For diagnostics: write per-insert snapshot entries for stored events */
+					if (snapshot_buf) {
+						/* write at extraction index so it's 1:1 with extraction_dbg entries */
+						snapshot_buf[idx * 8 + 0] = extraction_dbg[idx].stored0;
+						snapshot_buf[idx * 8 + 1] = extraction_dbg[idx].stored1;
+						snapshot_buf[idx * 8 + 2] = extraction_dbg[idx].stored2;
+						snapshot_buf[idx * 8 + 3] = extraction_dbg[idx].stored3;
+						snapshot_buf[idx * 8 + 4] = (ulong)extraction_dbg[idx].thread_id;
+						snapshot_buf[idx * 8 + 5] = (ulong)extraction_dbg[idx].table_half;
+						/* marker: combine thread and extraction index */
+						snapshot_buf[idx * 8 + 6] = ((ulong)extraction_dbg[idx].thread_id << 32) | (ulong)idx;
+						if (snapshot_seq_counter) {
+							uint seqv = atomic_inc(snapshot_seq_counter);
+							snapshot_buf[idx * 8 + 7] = (ulong)seqv;
+						} else {
+							snapshot_buf[idx * 8 + 7] = 0; /* reserved */
+						}
+					}
 				}
 			}
 		}
