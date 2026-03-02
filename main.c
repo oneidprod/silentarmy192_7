@@ -701,8 +701,11 @@ uint32_t print_solver_line(uint32_t *values, uint8_t *header,
     printf("sol: %s ", job_id);
     p = header + ZCASH_BLOCK_OFFSET_NTIME;
     printf("%02x%02x%02x%02x ", p[0], p[1], p[2], p[3]);
+    // Limit nonce to standard 8 bytes (16 hex chars) for Stratum compatibility
+    uint32_t nonce_output_len = ZCASH_NONCE_LEN - fixed_nonce_bytes;
+    if (nonce_output_len > 8) nonce_output_len = 8;  // Cap at 8 bytes
     printf("%s ", s_hexdump(header + ZCASH_BLOCK_HEADER_LEN - ZCASH_NONCE_LEN +
-		fixed_nonce_bytes, ZCASH_NONCE_LEN - fixed_nonce_bytes));
+		fixed_nonce_bytes, nonce_output_len));
     printf("%s%s\n", ZCASH_SOLSIZE_HEX,
 	    s_hexdump(buffer + ZCASH_BLOCK_HEADER_LEN + ZCASH_SOLSIZE_LEN,
 		ZCASH_SOL_LEN));

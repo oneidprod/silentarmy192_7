@@ -352,6 +352,9 @@ class Silentarmy:
                         (devid, str(decoded[1:])))
                 # decoded[1:] = (job_id, ntime, nonce_rightpart, sol)
                 job_id, ntime, nonce_rightpart, sol = decoded[1:]
+                # DEBUG: Log what we're actually submitting
+                print(f"DEBUG: job_id={job_id}, ntime={ntime}, nonce={nonce_rightpart}")
+                print(f"DEBUG: sol length={len(sol)}, sol prefix={sol[:12]}...")
                 # Note: solver already includes fd9001 prefix, don't double-add
                 # if not sol.startswith('fd9001'):
                 #     sol = 'fd9001' + sol
