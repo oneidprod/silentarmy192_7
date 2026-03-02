@@ -1,0 +1,16 @@
+Total DBG non-zero entries checked: 32
+DBG entries with a matching Dump row: 3
+Matches: 0 Mismatches: 3
+Mismatches / issues found (details): 3
+
+ROW 0 ROUND 0 SLOT 0 HALF 0 KIND no_slot
+ stored : ['1122334455667788', '99aabbccddeeff00', '0102030405060708', 'deadbeefcafebabe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1870914103 KIND no_slot
+ stored : ['372bba9b815474c0', '50e7f63ebc6f83e2', 'c825b8aefe8eb577', '5474c088943c1b2a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2038717493 KIND no_slot
+ stored : ['352ebf5d60435501', '330f4f785879845c', 'a5efc1d8602a1bca', '435501b66a7992dd']
+ computed: (no dump data)

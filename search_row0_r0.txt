@@ -1,0 +1,2 @@
+Loaded 4259 extraction entries, searching in row_0_round0.bin size 1024
+Found extraction idx 0 tid 0 row 0 at offset 8 slot 0

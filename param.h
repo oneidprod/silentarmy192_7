@@ -95,7 +95,7 @@
 /*
 ** Return the offset of Xi in bytes from the beginning of the slot.
 */
-#define xi_offset_for_round(round)	(8 + (round) * 3)
+#define xi_offset_for_round(round)	(8 + (round) * 4)
 
 // An (uncompressed) solution stores (1 << PARAM_K) 32-bit values
 #define SOL_SIZE			((1 << PARAM_K) * 4)

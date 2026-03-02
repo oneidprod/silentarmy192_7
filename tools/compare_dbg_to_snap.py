@@ -38,7 +38,7 @@ for m in dbg_block_re.finditer(data):
     s1 = find_hex('stored1') or '0'
     s2 = find_hex('stored2') or '0'
     s3 = find_hex('stored3') or '0'
-        stored_list.append([s0.rjust(16,'0'), s1.rjust(16,'0'), s2.rjust(16,'0'), s3.rjust(16,'0')])
+    stored_list.append([s0.rjust(16,'0'), s1.rjust(16,'0'), s2.rjust(16,'0'), s3.rjust(16,'0')])
 
 # Compare by index
 N = min(len(snaps), len(stored_list))

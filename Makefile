@@ -13,7 +13,7 @@ CFLAGS = -O3 -std=gnu99 -pedantic -Wextra -Wall \
     -Wno-overlength-strings
 LDFLAGS = -rdynamic -L${LIBOPENCL}
 # LDLIBS = -lOpenCL -lrt
-LDLIBS= -lcl -lrt
+LDLIBS= -lOpenCL -lrt
 OBJ = main.o blake.o sha256.o
 INCLUDES = blake.h param.h _kernel.h sha256.h
 

@@ -68,7 +68,7 @@ for i, s in enumerate(sn):
 for e in ex:
     by_row[e['row']] += 1
     by_thread[e['thread']] += 1
-    by_half[e['table_half']] += 1
+    by_half[e['half']] += 1
 
 print('\nTop rows in extraction_dbg:')
 for r,c in by_row.most_common(10):

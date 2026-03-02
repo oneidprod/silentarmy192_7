@@ -8,7 +8,8 @@ import sys
 
 dump_re = re.compile(r"Dump row (?P<row>\d+) \(round (?P<round>\d+)(?: [^)]*)?\): cnt=(?P<cnt>\d+)")
 slot_re = re.compile(r" slot (?P<idx>\d+): .*\n  rawslot=(?P<raw>[0-9a-fA-F]+)")
-dbg_re = re.compile(r"DBG\[\d+\]: round=(?P<round>\d+) .* row=(?P<row>\d+) slot=(?P<slot>\d+) .* table_half=(?P<half>\d+) .* stored0=(?P<s0>[0-9a-fA-F]+) stored1=(?P<s1>[0-9a-fA-F]+) stored2=(?P<s2>[0-9a-fA-F]+) stored3=(?P<s3>[0-9a-fA-F]+)")
+# capture DBG blocks (may span multiple visual lines); parse fields inside each block
+dbg_block_re = re.compile(r"(DBG\[\d+\]:.*?)(?=\nDBG\[|\Z)", re.S)
 
 def le64_from_rawslot(rawhex, idx, byte_offset=0):
     # rawhex is hex string length 64 (32 bytes). read 8-byte chunk starting at
@@ -74,12 +75,31 @@ def main():
     except Exception:
         NR_ROWS = None
 
-    for m in dbg_re.finditer(data):
-        roundn = int(m.group('round'))
-        row = int(m.group('row'))
-        slot = int(m.group('slot'))
-        half = int(m.group('half'))
-        s = [m.group('s0').lower().rjust(16, '0'), m.group('s1').lower().rjust(16, '0'), m.group('s2').lower().rjust(16, '0'), m.group('s3').lower().rjust(16, '0')]
+    for m in dbg_block_re.finditer(data):
+        block = m.group(1)
+        # extract fields individually to avoid ordering/newline issues
+        def find_int(field):
+            mm = re.search(r"\b" + field + r"=(\d+)", block)
+            return int(mm.group(1)) if mm else None
+        def find_hex(field):
+            mm = re.search(r"\b" + field + r"=([0-9a-fA-F]+)", block)
+            return mm.group(1).lower() if mm else None
+
+        roundn = find_int('round')
+        row = find_int('row')
+        slot = find_int('slot')
+        half = find_int('table_half')
+        # default half to 0 if not present
+        if half is None:
+            half = 0
+        s0 = find_hex('stored0') or '0'
+        s1 = find_hex('stored1') or '0'
+        s2 = find_hex('stored2') or '0'
+        s3 = find_hex('stored3') or '0'
+        s = [s0.rjust(16, '0'), s1.rjust(16, '0'), s2.rjust(16, '0'), s3.rjust(16, '0')]
+        # if round/row/slot not found, skip
+        if roundn is None or row is None or slot is None:
+            continue
         # skip all-zero stored entries
         if all(x == '0000000000000000' for x in s):
             continue
@@ -116,44 +136,51 @@ def main():
             slots = dumps[dkey]
             total_with_dump += 1
             raw = slots.get(slot)
-            if not raw:
-                mismatches.append((row, roundn, slot, half, s, None, 'no_slot', dkey))
-                matched_bad += 1
-                found = True
-                break
-            if len(raw) < 64:
-                raw = raw.ljust(64, '0')
-            # compute xi byte offset per kernel macro: 8 + round*3
             xi_offset = 8 + (crnd * 3)
-            # build a byte buffer that covers xi_offset..xi_offset+32 bytes
-            slot_bytes = bytes.fromhex(raw)
-            # if requested range spills past this slot, try to read next slot's bytes
-            needed_end = xi_offset + 32
-            if needed_end > len(slot_bytes):
-                # attempt to append next slot bytes (slot+1) if available
-                next_raw = slots.get(slot + 1)
-                if next_raw:
-                    next_bytes = bytes.fromhex(next_raw)
-                else:
-                    next_bytes = b''
-                slot_bytes = slot_bytes + next_bytes
-            # ensure we have enough bytes; pad with zeros if not
-            if len(slot_bytes) < xi_offset + 32:
-                slot_bytes = slot_bytes.ljust(xi_offset + 32, b'\x00')
-            # extract four little-endian 8-byte words starting at xi_offset
-            computed = []
-            for i in range(4):
-                start = xi_offset + i * 8
-                chunk = slot_bytes[start:start+8]
-                if len(chunk) < 8:
-                    chunk = chunk.ljust(8, b'\x00')
-                val = int.from_bytes(chunk, 'little')
-                computed.append('{:016x}'.format(val))
-            if computed != s:
-                mismatches.append((row, roundn, slot, half, s, computed, 'mismatch', dkey))
-                matched_bad += 1
+            def compute_from_raw(rawhex, slot_idx, xi_offset):
+                if not rawhex:
+                    return None
+                if len(rawhex) < 64:
+                    rawhex = rawhex.ljust(64, '0')
+                slot_bytes = bytes.fromhex(rawhex)
+                needed_end = xi_offset + 32
+                if needed_end > len(slot_bytes):
+                    next_raw = slots.get(slot_idx + 1)
+                    next_bytes = bytes.fromhex(next_raw) if next_raw else b''
+                    slot_bytes = slot_bytes + next_bytes
+                if len(slot_bytes) < xi_offset + 32:
+                    slot_bytes = slot_bytes.ljust(xi_offset + 32, b'\x00')
+                computed = []
+                for i in range(4):
+                    start = xi_offset + i * 8
+                    chunk = slot_bytes[start:start+8]
+                    if len(chunk) < 8:
+                        chunk = chunk.ljust(8, b'\x00')
+                    val = int.from_bytes(chunk, 'little')
+                    computed.append('{:016x}'.format(val))
+                return computed
+
+            if raw:
+                computed = compute_from_raw(raw, slot, xi_offset)
             else:
+                computed = None
+
+            if computed == s:
                 matched_ok += 1
+            else:
+                # try any slot in this row as a fallback
+                found_in_other = None
+                for sidx, sraw in slots.items():
+                    comp = compute_from_raw(sraw, sidx, xi_offset)
+                    if comp == s:
+                        found_in_other = sidx
+                        break
+                if found_in_other is not None:
+                    mismatches.append((row, roundn, slot, half, s, comp, f'found_in_slot_{found_in_other}', dkey))
+                    matched_ok += 1
+                else:
+                    mismatches.append((row, roundn, slot, half, s, computed, 'mismatch' if computed is not None else 'no_slot', dkey))
+                    matched_bad += 1
             found = True
             break
         # if none of the candidate keys matched, continue

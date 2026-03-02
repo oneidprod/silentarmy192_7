@@ -1,0 +1,56 @@
+Total DBG entries: 4096, checked against dumps: 7, matches: 0, mismatches: 7
+
+Dump rows present:
+(1, 1202)
+(1, 2589)
+(1, 3403)
+(1, 4578)
+(1, 5114)
+(1, 5191)
+(1, 5757)
+
+DBG rows that match a dump row:
+DBG row 5114 (DBG round 1) matches dump key (1, 5114)
+DBG row 1202 (DBG round 1) matches dump key (1, 1202)
+DBG row 2589 (DBG round 1) matches dump key (1, 2589)
+DBG row 4578 (DBG round 1) matches dump key (1, 4578)
+DBG row 5757 (DBG round 1) matches dump key (1, 5757)
+DBG row 5191 (DBG round 1) matches dump key (1, 5191)
+DBG row 3403 (DBG round 1) matches dump key (1, 3403)
+---
+DBG round=1 row=5114 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['749f3e69b3c36431', 'a34e71f7e0bfbb64', '000067bfb3989c60', '0000000000000000']
+---
+DBG round=1 row=1202 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['db76eec46b0eb542', '3367ac0b0a45d11d', '00000de092022042', '0000000000000000']
+---
+DBG round=1 row=2589 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['b9cfe450c45d02a3', 'b9477b46ae802d7a', '0000ec10ebcf2b71', '0000000000000000']
+---
+DBG round=1 row=4578 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['cc820ca222364e10', '8193ebdb199a4090', '0000ad522d73a557', '0000000000000000']
+---
+DBG round=1 row=5757 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['ad801c35f0b24663', '11bbd67fdcfc2331', '000000b32521625a', '0000000000000000']
+---
+DBG round=1 row=5191 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['1456fd483338d143', 'a781ef170dbf2adf', '000000c074fdaeec', '0000000000000000']
+---
+DBG round=1 row=3403 slot=0
+xi hex (from dump) = 000000000000000000000000000000000000000000000000
+computed parts = ['0000000000000000', '0000000000000000', '0000000000000000']
+stored vals   = ['bb5db93d685b2cd3', '4e4f7aa1237dde5e', '00003deba5ae16f8', '0000000000000000']
+
+Done

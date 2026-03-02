@@ -1,0 +1,26 @@
+Found 2 OpenCL platform(s)
+Using GPU device ID 0
+Building program
+Hash tables will use 536.9 MB
+Running...
+
+Solving nonce 3d4bb1161bb370b6988a2ff9d97852467d40ca9d000000000000000000000000
+Round 0
+init_ht: enqueue global=65536 local=256
+Dropped: 0 (coll) 25165824 (stor)
+Retrieved 0 potential solutions
+Nonce 3d4bb1161bb370b6988a2ff9d97852467d40ca9d000000000000000000000000: 0 sols
+Stats: 0 likely invalids
+Total 0 solutions in 7866.9 ms (0.0 Sol/s)
+extraction_dbg_counter = 0
+potential_matches_final_table = 262144
+debug: buf_round_collisions=0x56071b535a10 buf_round_stored=0x56071b5e0940
+Per-round counters:
+ round 0: collisions=0 stored=8388608
+ round 1: collisions=0 stored=0
+ round 2: collisions=0 stored=0
+ round 3: collisions=0 stored=0
+ round 4: collisions=0 stored=0
+ round 5: collisions=0 stored=0
+ round 6: collisions=0 stored=0
+ round 7: collisions=0 stored=0

@@ -1,0 +1,805 @@
+Total DBG non-zero entries checked: 3781
+DBG entries with a matching Dump row: 316
+Matches: 0 Mismatches: 316
+Mismatches / issues found (details): 316
+
+ROW 0 ROUND 0 SLOT 0 HALF 0 KIND mismatch
+ stored : ['1122334455667788', '99aabbccddeeff00', '0102030405060708', 'deadbeefcafebabe']
+ computed: ['1122334455667788', '99aabbccddeeff00', '0102030405060708', '0010b82ecafebabe']
+ rawslot : 0000000023e60100887766554433221100ffeeddccbbaa990807060504030201
+
+ROW 2 ROUND 0 SLOT 0 HALF 1669327079 KIND no_slot
+ stored : ['e76a9ae645a6b5b2', '2c025250e1637fe8', '03b8d6151d3aefb7', 'a6b5b251deb03613']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2032947881 KIND no_slot
+ stored : ['a9e8b4e625e1897f', '538df00631792c52', '7c9a17f704ab9323', 'e1897f4cb5e2a719']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3830266382 KIND no_slot
+ stored : ['0ec7d5e5107e142e', '0e8b18176fe44d3a', '551e42f441a74fec', '7e142e55cd0cbd09']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3789127632 KIND no_slot
+ stored : ['d015c54fb4b1d5de', 'b50c5c1dade1d97f', 'd94dea2b536103a7', 'b1d5de2521b6c1fe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3806638368 KIND no_slot
+ stored : ['2091adc9f0711727', 'e30cbf43bae2e4b1', '2f7e21c51fc1e95d', '7117278185545f22']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2689969592 KIND no_slot
+ stored : ['b832f00d1b33ceeb', '67e37ef8bca055ad', '8c3e85f9f3069c08', '33ceebfb5ba6bb45']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2671607710 KIND no_slot
+ stored : ['9e9e4cc585baea21', '9e056641069f3d7f', '382f3f29401f7285', 'baea2184e0cbe53b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1240151801 KIND no_slot
+ stored : ['f9439469eecc48bd', '0b91b17e1549eb36', 'd374928de21f3635', 'cc48bdd6b57d2334']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 265083021 KIND no_slot
+ stored : ['8d2deac15ba3c341', 'ebeeccc0800fccd8', '7d8acccbc3f049da', 'a3c341c129b75ccd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1726402680 KIND no_slot
+ stored : ['78c9bdca060b7a63', '7c7d01801166e6d0', '87a7ec33936929fb', '0b7a63a3813ff54f']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1619587156 KIND no_slot
+ stored : ['5468c46aafa2b6ae', 'c15de3104d6088f0', '6a46dbb81eb22cc5', 'a2b6ae80ddae5142']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2020797040 KIND no_slot
+ stored : ['703ba3f867c7ec84', 'a3181eea647872ea', '43427c4fdd412582', 'c7ec84961aef84e5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2163591936 KIND no_slot
+ stored : ['002546873377eecd', 'ea9dd9291080f5cb', '0e4bd67023e83476', '77eecdfa0efe039c']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3127837806 KIND no_slot
+ stored : ['6e89bca06fd37b7a', 'c88159c9c8ba6f04', 'f45a99998a80f021', 'd37b7a6515b8afe5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3770649040 KIND no_slot
+ stored : ['d06c4fb6ee491f19', '524c7acea9e0bf89', '86d314a7839367f6', '491f196d95eed9ec']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2767635347 KIND no_slot
+ stored : ['93e365316b3e71bb', 'c6e54d94b7a4f6c3', '95568e605558d44f', '3e71bbd67c75cb94']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1303626487 KIND no_slot
+ stored : ['f745bfeacf3debea', 'e199da80fa4db3c2', '9e97850c7cf2343a', '3debeaee62b5f2dc']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2905516273 KIND no_slot
+ stored : ['f112e29f408ad24d', 'cca7704459ad2ea8', '167b6261eda3a85c', '8ad24ddf83f4790a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2159107706 KIND no_slot
+ stored : ['7ac5d47a3269410c', '16da46050c80b15e', '26e04043a3508b32', '69410c786ddf7a70']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 610737092 KIND no_slot
+ stored : ['c48266dfd4693111', 'aea735daef24671b', '54ff07615405a4ca', '693111404b1e39bc']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2393645349 KIND no_slot
+ stored : ['25a0cfbea2522177', '5794943a538eac21', 'e8e8f24e391e2bfd', '52217755c67b8eba']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2066614291 KIND no_slot
+ stored : ['132fafb3121e9eae', '6315a451937b2e08', '8677f394f06c85ff', '1e9eae70985edaff']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3084627976 KIND no_slot
+ stored : ['085da7d98eca722e', '43b376eeb5b7dbb0', 'cc9dc93a99be22d3', 'ca722edb5e866739']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3875226069 KIND no_slot
+ stored : ['d54da2fd6001ea77', '350d6945e7e6fb41', 'a6c8a00f76d995a7', '01ea776a7f3e8777']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1907462126 KIND no_slot
+ stored : ['eeba672bc13b8f7b', 'b4b8eefe1771b18f', '35ff31bd6438dffb', '3b8f7b57dcb3aa52']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3718401276 KIND no_slot
+ stored : ['fc8bb564047ccb80', '81a116bcbfdda24c', '14acc32ca9f17af2', '7ccb805aaec9c04a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3805375728 KIND no_slot
+ stored : ['f0453cdf588fce05', 'c69d526356e2d16c', '8cb1e586b8d1d8db', '8fce05f8f21fba43']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3109959042 KIND no_slot
+ stored : ['8275c84bbc9c7666', '7ab824b9b0b95e35', 'f0800606c53941ea', '9c7666a8bd19312b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 716528531 KIND no_slot
+ stored : ['9328264b13cd22a8', '04ec700a332ab55b', 'af7f58a7c2807f2e', 'cd22a848874b458f']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 294729435 KIND no_slot
+ stored : ['dbfca6ac0bc09e80', '57c4f1d37b119136', '300dd676b5322d87', 'c09e80da1b486ebe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4283698989 KIND no_slot
+ stored : ['2de2c28828fe8b6d', '5523e8435bff540f', 'dad028c14d5bf71a', 'fe8b6d985b4388ad']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 554592579 KIND no_slot
+ stored : ['4383813316045646', 'bfcf386d57210e69', 'c52a53ad7b2e6a82', '04564608d4ed1574']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3061132231 KIND no_slot
+ stored : ['c7fd615fdbfd8c6e', 'e9dc16379eb6752b', '321c9b9f0308bfcb', 'fd8c6e9049fbe493']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4062992115 KIND no_slot
+ stored : ['f3ba398d3dd97ccd', '266d400ca4f22c56', 'b8b778c6da8e701a', 'd97ccd33cc1d5e8d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1267843136 KIND no_slot
+ stored : ['406031ef7ac7b006', 'cc674b91ee4b91c0', 'ec3284559e562d1c', 'c7b006ecbb25f99d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 26086150 KIND no_slot
+ stored : ['06c6e9fedfb88269', '4e3b2ce662018e0b', '0004a1f4c0f62018', 'b88269111ac44389']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1773992734 KIND no_slot
+ stored : ['1e933b328ac1b50b', '8b8b2f252f69bcfb', '8a583977f2ba6f58', 'c1b50b948c429c44']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2935930595 KIND no_slot
+ stored : ['e320e7aa53bcb7e3', 'f72d13de54aefebe', '267f363851b7454b', 'bcb7e3e6b5d93f15']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3745811529 KIND no_slot
+ stored : ['49f1bf75761cdc64', '62bbd7b5e8df448c', 'c81c473b7e5d144d', '1cdc64622268d97a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1615811950 KIND no_slot
+ stored : ['6eaf6c6c1989e4fa', 'ae5e6aa91f604f55', '56158f27f0c75a0c', '89e4fa6354191569']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3246634413 KIND no_slot
+ stored : ['ad00591b6e28c800', 'f60eb01787c183b5', '2aa4bc3412068269', '28c8009c0e02ee95']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3158470029 KIND no_slot
+ stored : ['8dccf1721d9f7a3f', '1e355ec4aabc426d', 'a8bf68a461dba873', '9f7a3f2747c4e184']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 242960720 KIND no_slot
+ stored : ['503c717181b6e151', '53fb71601f0e7b49', '5a25e6284b0f5996', 'b6e1513d6331a64e']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3731635417 KIND no_slot
+ stored : ['d9385e06134f4454', '23c1043d05de6c3c', '258d1a93a78737d1', '4f44542275fcbd29']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2751121248 KIND no_slot
+ stored : ['60d8e5e550ef6f7c', 'e94da8dd7fa3fac7', 'ae972779b386f247', 'ef6f7c0689ad75c2']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3199723560 KIND no_slot
+ stored : ['2819bd785b022c13', '4cdfd2e29ebeb7e8', '61b92623f05afc7a', '022c136e31d08d95']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 967667142 KIND no_slot
+ stored : ['c6ace07ef1be47b9', '196634f8f639ad6d', '7d767db95402abb0', 'be47b90c9f564d04']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3341479004 KIND no_slot
+ stored : ['5c0aa70c6aee5ea2', 'c2428051edc72aec', '9653ab068c3a0d82', 'ee5ea253016ab06e']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1114267187 KIND no_slot
+ stored : ['337e180bef2fd973', '3c8ecd9bbd426a5e', 'accea63da33554ea', '2fd973cf7cec1ebe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 708428359 KIND no_slot
+ stored : ['47c0b761778a079a', 'fe566565b32a39c2', 'a385893b623578b7', '8a079a517d0fbef4']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3916041759 KIND no_slot
+ stored : ['1fdfc8185a183fcd', '4653ddb679e96a0e', 'ecfaff830eae4923', '183fcd1e6c6fac88']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 120082188 KIND no_slot
+ stored : ['0cbe62b499d899c1', 'ac95469d0907284f', '12937e80614ad7c7', 'd899c199cecf7179']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1329873129 KIND no_slot
+ stored : ['e91a9449665248f2', '4d953a493d4f4440', '604ab4d99fca6966', '5248f2a6f5e23185']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2410738194 KIND no_slot
+ stored : ['124a81bcae13f9a4', 'f1472fc2fb8fb0f2', '91204b96515dad9a', '13f9a4dab1fd49db']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3576753920 KIND no_slot
+ stored : ['008acb59c1aca0ec', '84c7086562d530ef', 'ef7c8389470b7f4a', 'aca0ec5df68364a6']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2240401534 KIND no_slot
+ stored : ['7e35995638ab0204', '3ff79b28028589d0', 'ae5fffb51db77c10', 'ab0204d166d472dd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1101431782 KIND no_slot
+ stored : ['e645b0914ead23a8', 'd30011e01941a683', 'd546418b0f1e9a3b', 'ad23a86b5da039c8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 987130060 KIND no_slot
+ stored : ['ccdb5809372a47fa', '18e52f32143ad668', '5e34d322993a0a84', '2a47faeec8d4adb9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1821452413 KIND no_slot
+ stored : ['7de8f4583dcf4197', '953f0f4f496c9128', '0d0f599231ebba11', 'cf4197d58caebd79']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 581344712 KIND no_slot
+ stored : ['c89374c76755e68e', '698f2deb8a22a69d', 'e9fa8744e4678668', '55e68e155cd6a285']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1209812331 KIND no_slot
+ stored : ['6b430699c309c2f0', '65c296123f481c45', 'fe4128477e7a6132', '09c2f0bf2950a963']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3735795070 KIND no_slot
+ stored : ['7e2ade4d167be167', 'bc13dadcf5deabb5', '8351eac5ecbf2f5a', '7be1670de339ce24']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3421470950 KIND no_slot
+ stored : ['e6bea063eb5e12dd', 'b68e05d815cbef80', '1845d7950ddb157c', '5e12dda1b020ca15']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 290381773 KIND no_slot
+ stored : ['cd9bbacd69829159', 'cb4c679109114edf', 'dca748d2c357f16f', '829159efe8caf1c2']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 40494210 KIND no_slot
+ stored : ['829ecdd33902f802', 'c5213bdbef0269e4', '4fe13bd5d0fc7dcb', '02f802fdf6518f65']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 322808658 KIND no_slot
+ stored : ['5222d7abe08c5e0a', '0acac71d02133dab', 'aa59e29f4b6593c9', '8c5e0ab057fba44d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3731441596 KIND no_slot
+ stored : ['bca12cfac640aa9d', '4fc3e0aefcde6947', 'eaf3c579d16ac909', '40aa9deef8aae474']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1169225410 KIND no_slot
+ stored : ['c250e5ca1d773ed0', '20da78737f45b0f6', 'cbef7d4e44a66573', '773ed09ff5d04cf8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1510474752 KIND no_slot
+ stored : ['00686975647dcaaa', 'e401e1da285a0804', '66dd713c0e993f8a', '7dcaaa8e2a31c7b5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3181199298 KIND no_slot
+ stored : ['c273daedfaa1d6f3', '1ba868001cbd9d3f', 'fdbd9e1a5bd93f3f', 'a1d6f3908d633d8a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3326231767 KIND no_slot
+ stored : ['d75d6bb3c82a1c3f', '2e5c926edec64244', '14cf5478a9de8290', '2a1c3f787e37773b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1990468446 KIND no_slot
+ stored : ['5e450a3bf0e9bfbb', '95e4c2e1e376a423', '18f1d9866445a923', 'e9bfbb4fc6273942']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4076964566 KIND no_slot
+ stored : ['d612d62765cb32ed', '150d2cb21bf3018a', 'cca7cb1042a46353', 'cb32ed54ec09dc98']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3207637302 KIND no_slot
+ stored : ['36973f037e0cfa82', '535ea603fdbf30a9', '894a124b33322ebc', '0cfa825d630e43d8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3400853705 KIND no_slot
+ stored : ['c9e964bb94db7691', 'f0426dc3bdcab4e8', 'bd37bd81f0d47d9a', 'db76913969a6d77d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2826795431 KIND no_slot
+ stored : ['a718b9d6f2ed5a98', 'df4ff0afc0a87d79', 'c63b96092c262b42', 'ed5a98a460e8a6c9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2373528354 KIND no_slot
+ stored : ['22c6d8d055dbee35', 'a14fa06bea8d792b', 'fac09a660af98fbd', 'dbee3569b87ab6df']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3530964752 KIND no_slot
+ stored : ['105b2605dee8c93c', '43bbb54e0fd2763f', '66b6feaa040fc38f', 'e8c93c9aed9689a8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 964139570 KIND no_slot
+ stored : ['329ce5c3164d92a7', '06f27f69ac39779a', '1d3fd72513119638', '4d92a7457029008f']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1993883783 KIND no_slot
+ stored : ['8778600eaf520a1f', '26826db92076d840', '72001db893004874', '520a1faf4443f316']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1968401295 KIND no_slot
+ stored : ['8f448427213c4233', '4355769ba275536b', 'c795a9619d9e1d32', '3c4233c696b7ebe9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3998229220 KIND no_slot
+ stored : ['e4e3cd834fb75acd', '46001d5c6aee5022', '9155f2f8881451ce', 'b75acdd739c6d270']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1814825722 KIND no_slot
+ stored : ['fad242ce09f6aa07', 'def7acf6c96c2c0a', 'e945f27bb86ecfc4', 'f6aa076e7fe168ab']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1238278493 KIND no_slot
+ stored : ['5dd39b5fd34f3a0c', '01bb8b5aba49cea1', '74ea15b5ad5dd515', '4f3a0c18f896f395']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2186241903 KIND no_slot
+ stored : ['6fd0f5db21c4ffb7', '8d2ecacf3a824f67', 'bbe60641417d29da', 'c4ffb7d0a26ebefb']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2402644782 KIND no_slot
+ stored : ['2e4a690fbc425243', '76b83f34c08f3573', '262b5f7fb31fc54f', '425243c323742580']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1913006337 KIND no_slot
+ stored : ['01a386974872c4f2', '00475b08f0720629', '5d252f94a613a287', '72c4f24d6bdcbf6d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1059327907 KIND no_slot
+ stored : ['a37c24a50d68ab24', 'c74b65a8cb3f240f', 'e1bff3300ed4dc1b', '68ab24d8967e5631']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3210154047 KIND no_slot
+ stored : ['3f2edc3c4946d9e6', '5f7d1898e6bf5710', 'ee078f99479bc736', '46d9e665f4f4e871']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2699323738 KIND no_slot
+ stored : ['5a4ca9e019fc5bc9', '72f1cac077a0e469', 'c25955550b4c2bed', 'fc5bc90f1af23827']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1047485877 KIND no_slot
+ stored : ['b525445dce842463', '85c28bf6763e6f5d', '616994fdcae4bbf3', '8424632f86f7eab8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 524611392 KIND no_slot
+ stored : ['40f068ba3aa5871e', 'ff8ab611461f44ef', '35e653b829a2d8c4', 'a5871e5230077a9f']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3941455573 KIND no_slot
+ stored : ['d50637825f513e09', '5d8a7fa5f0eaedd6', '779fbc85b54795c0', '513e096b15559a4f']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 262082589 KIND no_slot
+ stored : ['1dd54163cb555aa9', '5be33f5ef40f9f10', '52d1d2886619b097', '555aa9e02ce471f5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1355493243 KIND no_slot
+ stored : ['7b523eba2771c5c0', '9da9f15a1650cb2f', '4c6df050e0c99692', '71c5c0e82192983e']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2497386143 KIND no_slot
+ stored : ['9fc4e79a0a16da59', '13371ba58894db16', '7bfd8a181c3547a7', '16da59e20d992d7a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1672234393 KIND no_slot
+ stored : ['993058586fe474c0', 'c5e162a66e63ac45', 'fe98c9635fe61db6', 'e474c0227a625565']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 169276135 KIND no_slot
+ stored : ['e75287ebd1ce410e', 'ea18f5424a0a16f2', '1ebcb6c8beea99c4', 'ce410e52722d488e']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1520113098 KIND no_slot
+ stored : ['cae4f91f1a1f59aa', 'cdcac0c7825a9b15', '11f4567cea09b3e7', '1f59aaf13526f59b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3402188709 KIND no_slot
+ stored : ['a5816350b982d167', '0c9a04336dcac947', 'ead5755b964c921a', '82d167d229de0dcd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1029980869 KIND no_slot
+ stored : ['c5c9e8d5903332b2', 'e77001ca823d6442', '8e7b0d88c401edbf', '3332b2bfd68a8d78']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1566430907 KIND no_slot
+ stored : ['bba1fd52004c6dfc', '25f8b4cf655d5dd6', '77ac68a17d2b74ae', '4c6dfc11a85fd305']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1352948717 KIND no_slot
+ stored : ['edab5e2fe20d9cd6', '63c6fefc1b50a45b', '43951f0eb9b4013a', '0d9cd6b8d9276cee']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 123201973 KIND no_slot
+ stored : ['b52d9d5bac83a135', 'f9b53728bd0757e9', '000000000000f5c9', '83a1355036b49577']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2158644502 KIND no_slot
+ stored : ['167e30e7aeeb930c', '894e92fc1b80aa4d', '0000000000003942', 'eb930cb61423580d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1725192448 KIND no_slot
+ stored : ['00da0ed262ce54f7', '7d7cf5d37966d459', '000000000000f1ef', 'ce54f7a307c41c96']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 883118845 KIND no_slot
+ stored : ['fdeca0fc5028a3a9', 'cd6d41b98834a352', '000000000000babb', '28a3a96f5743aefe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 783441367 KIND no_slot
+ stored : ['d7baa80c03ea3f79', 'fb7eb65a832eb25d', '000000000000d360', 'ea3f797d325d3026']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1371764538 KIND no_slot
+ stored : ['3a66d037a29798cc', '9138f1134151c377', '0000000000005732', '9798cc7ae9f6faa9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3193380258 KIND no_slot
+ stored : ['a28fa29faaf00316', '6a50793469be571d', '0000000000006cee', 'f003161b06ecf7c7']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 520168414 KIND no_slot
+ stored : ['deaec5c1d56191d9', '1ea5d4f0a91f0123', '000000000000cb0b', '6191d940a9a95d67']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4178314820 KIND no_slot
+ stored : ['44c2d05d20e64f1e', '344adedd44f90c06', '00000000000044b5', 'e64f1ebf59f7bc50']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1025381678 KIND no_slot
+ stored : ['2eb4cd7d23a3b935', 'aa3bdbd6b03d1e15', '00000000000028ee', 'a3b935102b56d58a']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1685655175 KIND no_slot
+ stored : ['870abaeaedca4d26', '4b9934b00664790e', '000000000000eced', 'ca4d26a94db47f33']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 494849712 KIND no_slot
+ stored : ['b0cec37e9fa7f462', '8e1a2b264c1d7ece', '0000000000003bdf', 'a7f462c8f4631b22']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2265972165 KIND no_slot
+ stored : ['c51eae6f1b60c88b', '9d9d6d2b32870ffd', '000000000000dabe', '60c88baecf1dbdd1']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4218674575 KIND no_slot
+ stored : ['8f7db2e8c88611c4', 'd2a80898dcfb73dd', '0000000000002aa3', '8611c42f6ea5ae61']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 798302639 KIND no_slot
+ stored : ['af29ac0f972a0bd4', '185cebc4b12f9521', '000000000000cb7f', '2a0bd4eb3778e54c']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3762669592 KIND no_slot
+ stored : ['18ab21222cdfd435', '278304af97e045c8', '00000000000066de', 'dfd435817a196040']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3355675539 KIND no_slot
+ stored : ['93e5bf5de220cd80', 'e4080d7dbdc8038b', '0000000000009cdd', '20cd80b33ae39202']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2372817748 KIND no_slot
+ stored : ['544c25995eaea1eb', 'b6d97556848d6e53', '000000000000b3eb', 'aea1eb1370a69dfe']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3288007846 KIND no_slot
+ stored : ['a68d9a91ab9b0f07', '497cc122adc3fb04', '0000000000000b59', '9b0f072a8bf00600']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3101339201 KIND no_slot
+ stored : ['41ed78a8b02484b3', '6336de6cdeb8daae', '000000000000544c', '2484b3875a9cbec9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4181265963 KIND no_slot
+ stored : ['2b7d8b81d40e4588', '491e62d620f9390e', '00000000000078e1', '0e45888192222b01']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4188112593 KIND no_slot
+ stored : ['d1c050aa4596fe6b', 'cf49082932f9a186', '000000000000717f', '96fe6bff2c7ff638']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2775607356 KIND no_slot
+ stored : ['3c3a8ed86823013e', '26e602ee4ea57068', '00000000000009e1', '23013e2f88dceae5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3692866567 KIND no_slot
+ stored : ['075611a29629249b', 'c1b3f0286cdc1cac', '0000000000001fed', '29249b353620f105']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1700095654 KIND no_slot
+ stored : ['a657f3e34918688f', '4c8e1acbf5655566', '00000000000021be', '18688f72850a9430']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3922183709 KIND no_slot
+ stored : ['1d2390f5298d0d70', '4bf56907a6e9c7c6', '0000000000008355', '8d0d7070617669d7']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3676555850 KIND no_slot
+ stored : ['4ac2e22ef8b90a18', '6daf0acb19db23ca', '00000000000075f1', 'b90a1831991c0b10']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2834032965 KIND no_slot
+ stored : ['4520e63f23ba71d8', '98af4eced8a8ebe9', '000000000000702e', 'ba71d8126e44a845']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 500446506 KIND no_slot
+ stored : ['2aa57be94dbec95d', '99d2ae1a941dd435', '000000000000a462', 'bec95d26d0a4bf8d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1123982392 KIND no_slot
+ stored : ['38f07997d6cf6642', '63a4f0bdee42fe9c', '0000000000005ffa', 'cf664211cf7e489d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1820487969 KIND no_slot
+ stored : ['2120bed58ab81ae9', '882264a6086c8271', '000000000000c8d3', 'b81ae9d7fbbebc0d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 457051589 KIND no_slot
+ stored : ['c5f3b24d3a7dc249', '4114f682eb1b3e0d', '000000000000b643', '7dc249b3e9ac9dcd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 72162584 KIND no_slot
+ stored : ['18eec54d1e12c038', '7f587a2529044d1d', '000000000000e5e9', '12c038199ead1ccf']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2982424821 KIND no_slot
+ stored : ['f59864f6e29ca8ed', 'b99924a4dcb1c430', '0000000000008d0c', '9ca8edb9b6e1410b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3947720518 KIND no_slot
+ stored : ['468337120208ed6b', '01aa00c17deb4d6f', '0000000000003514', '08ed6b117887e416']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2213433786 KIND no_slot
+ stored : ['babae6ec2e909b51', '7c1af19b9783ee51', '000000000000c595', '909b5122208f046d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4112130029 KIND no_slot
+ stored : ['edf664fd18f5091d', '3ff4bd2eb6f51a1f', '000000000000e1dc', 'f5091d7584450b13']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1169659614 KIND no_slot
+ stored : ['de9f85f9dbe32f21', '6fbbae611245b796', '0000000000001b93', 'e32f21cc818cf5ad']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1243173063 KIND no_slot
+ stored : ['c79444352a00ddf7', '337cb934d44a1950', '000000000000ce3d', '00ddf77e407f5249']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 301043735 KIND no_slot
+ stored : ['174d41b20f065588', '872ab3ac4511f190', '000000000000fbc9', '065588434fa3e3eb']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1728926234 KIND no_slot
+ stored : ['1a36de4eda66e415', '2bd2c5a18e670d52', '0000000000008df9', '66e4153eca046891']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4133240550 KIND no_slot
+ stored : ['e692833bb400a451', '661f4365baf65c3e', '000000000000b5d1', '00a451fb783d80f4']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3915037494 KIND no_slot
+ stored : ['36d9cfc7f6711a3d', 'f2eadebf64e95abb', '000000000000a5cd', '711a3df12d9c2ecd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1441916505 KIND no_slot
+ stored : ['59615818708d44e5', 'd9a656e12055f1e6', '0000000000007872', '8d44e541effcbce7']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3199140528 KIND no_slot
+ stored : ['b0d1431e6fa83bee', '8e546206a1beaf02', '0000000000000c76', 'a83bee1986b44a9e']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3887293011 KIND no_slot
+ stored : ['53316ffa3602cbd9', '98677c3e14e7b362', '0000000000002da8', '02cbd9603a344532']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3558045704 KIND no_slot
+ stored : ['088a128bd263706c', 'c5992db00ed41378', '000000000000f1e4', '63706c8e6f199014']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3323002664 KIND no_slot
+ stored : ['283f8a171c99c4c7', '7d371143a3c610ff', '0000000000000806', '99c4c7f0ff914d14']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3643059131 KIND no_slot
+ stored : ['bba9a52dbb8b1c61', '48c118c5ebd924ab', '00000000000019e0', '8b1c612a8e5895f7']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3778728817 KIND no_slot
+ stored : ['71c6c1c973ce1af4', 'a0ecc5351ce13ad3', '000000000000ee8d', 'ce1af46602155793']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4202262279 KIND no_slot
+ stored : ['07cb5389f7481c8b', 'e17212a2eafa796f', '000000000000cba1', '481c8b7996c05150']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3978039180 KIND no_slot
+ stored : ['8cffc728cf8d1c28', '50211a9d8aed1c0f', '000000000000aee4', '8d1c28d7791f9bd5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1185351037 KIND no_slot
+ stored : ['7daf0f92b6e7ba58', 'b58d3a1e1a46a705', '00000000000033da', 'e7ba5830c1333969']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4179083575 KIND no_slot
+ stored : ['37822c2eac1984d6', '0c60d25c3cf917c1', '0000000000007252', '1984d6c07d603b14']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3432442431 KIND no_slot
+ stored : ['3fb8e8c614fcdd4b', '2dea0bc772cc96ea', '0000000000000304', 'fcdd4b21c004d2a9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 546989037 KIND no_slot
+ stored : ['ed3cdab59d96a36d', 'bcc2314ec8209a63', '000000000000ede0', '96a36d30754f78e7']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2092758116 KIND no_slot
+ stored : ['647b7891af2f09f1', '20e9e4d35b7cbcf4', '0000000000007015', '2f09f18e0fcc030b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4098159762 KIND no_slot
+ stored : ['92de28b521f8082c', '713e9d4bcef444f4', '000000000000cc88', 'f8082cbc616145e5']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3284268862 KIND no_slot
+ stored : ['3e593d5a167c11cb', '9eb87afe2bc3c1f7', '000000000000d2bc', '7c11cbd58eea1f11']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3315984648 KIND no_slot
+ stored : ['08c764a98d000ca6', '6ca05cb669c5a5e9', '000000000000d10d', '000ca6dad028c14d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4156424756 KIND no_slot
+ stored : ['3448918e6de3caa1', 'aba372c394f7be02', '000000000000a91b', 'e3caa1f52640f1fc']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2276837356 KIND no_slot
+ stored : ['ec9cfe9ba4a24765', 'ed369b76e287b5c7', '0000000000004a28', 'a2476568e5c63be8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 726188634 KIND no_slot
+ stored : ['5a74705edc507776', 'a461976dbe2b48c2', '000000000000ded9', '5077761dd71e9383']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3907435959 KIND no_slot
+ stored : ['b7ba8d21a27dc4bf', '430aa5a85ce8e6bd', '0000000000007019', '7dc4bfde391c4414']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4238281350 KIND no_slot
+ stored : ['86201e2c4881531b', '3680f339e7fc9f0a', '0000000000003ba8', '81531b84b820e4e9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2481118140 KIND no_slot
+ stored : ['bc5f31f2d64f38f4', '85567a5e6893e2db', '000000000000a065', '4f38f4ecda0621ac']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3731552603 KIND no_slot
+ stored : ['5b5c2da7406c8d0e', '675ce5526ade6af9', '00000000000099cc', '6c8d0ef0409d26a2']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 962375170 KIND no_slot
+ stored : ['0230b6551f274586', '2ac492adf2395cae', '0000000000001e10', '2745862b9d0b9d4c']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2716313937 KIND no_slot
+ stored : ['51e0d4f870916ce2', '48b40b68dda1e7a9', '000000000000e5eb', '916ce25335727cdb']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1881508588 KIND no_slot
+ stored : ['ec2bf1df64c30230', '17956e600570258a', '000000000000638c', 'c3023004dadd5dbc']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 446205261 KIND no_slot
+ stored : ['4d63ba075b7ac437', 'b60c7646801a988d', '0000000000008a24', '7ac437443ed6fb6b']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1579660219 KIND no_slot
+ stored : ['bbde25cbc50c7b89', '7ae007fa885e27b3', '0000000000007f57', '0c7b898dfef11a3c']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1081958041 KIND no_slot
+ stored : ['99a4638e78140214', 'baafcfe3cc407d5e', '0000000000006bb3', '140214d489c1b27d']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1362581555 KIND no_slot
+ stored : ['33b5e0e7e37196a4', '9ec30e50b7513758', '0000000000009235', '7196a45e34d32299']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1326974567 KIND no_slot
+ stored : ['673c1f80005657ea', '9583c729b14f1806', '00000000000083f3', '5657ea1e75205088']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 197687180 KIND no_slot
+ stored : ['8cd14b08afaa73b8', 'c817247b590bc877', '0000000000004d51', 'aa73b80ca3082fad']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 483519260 KIND no_slot
+ stored : ['1cf303e5d76e8a58', 'b7e0ac38c51cd1eb', '00000000000097d8', '6e8a5828fbd01021']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1124950260 KIND no_slot
+ stored : ['f43ab01f21e528af', '6bc9f7faf3430d60', '000000000000825f', 'e528af658c3af7de']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 4249204662 KIND no_slot
+ stored : ['b611cf04147c41ff', '5ccf120850fd45b7', '000000000000ca2a', '7c41ff404d5676b4']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1218695051 KIND no_slot
+ stored : ['8b7c7f054256e110', '8f58124e4d48a3cf', '0000000000009fdd', '56e110871b1da118']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1822758858 KIND no_slot
+ stored : ['ca2b7cac705a574b', 'a71d2cb7d26ca517', '0000000000004009', '5a574b110c0a3b4c']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2481067040 KIND no_slot
+ stored : ['200ba13c4e795bcc', '41ffe334f993e214', '000000000000611e', '795bccb22f598ab4']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1433752618 KIND no_slot
+ stored : ['2a86c77054e2c034', 'fe6b5514c9557554', '000000000000af9f', 'e2c0340b75d404f8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 711421689 KIND no_slot
+ stored : ['f967345309169aea', '39f8496f182a676e', '0000000000009ca9', '169aea0d0f599231']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2546447725 KIND no_slot
+ stored : ['6d4a36a84e0cf6c8', '83ae3d41fb97c7b5', '0000000000007e6d', '0cf6c813c8713de2']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3445232519 KIND no_slot
+ stored : ['873b4704f02d3162', 'd231cd1978cd5a13', '000000000000bae9', '2d31623c4e4e6823']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 865401737 KIND no_slot
+ stored : ['890dee6e4d2c4c78', '9dc911159e3394fb', '0000000000001ee2', '2c4c7835e653b829']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1375977212 KIND no_slot
+ stored : ['fc72e082534903ad', '79c34eab935203be', '0000000000002021', '4903ada0c2720787']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3685171413 KIND no_slot
+ stored : ['d5dee3729b6299ee', '77d536dce0dba740', '00000000000067f1', '6299eedcc69303e8']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2792782150 KIND no_slot
+ stored : ['46609017ea3b1f69', '99f395fbc5a67679', '0000000000006ce7', '3b1f69cca7cb1042']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 1890201321 KIND no_slot
+ stored : ['e9016ce0d6e8b024', '2467df2eef70aa2e', '0000000000008cfa', 'e8b024d268b07e70']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3390355534 KIND no_slot
+ stored : ['4e3249a1f5214c8f', '91faa0cccdca14b8', '000000000000f409', '214c8fcbe0ead8af']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3638891287 KIND no_slot
+ stored : ['17f871ba12ab0baa', '549612472dd8e513', '000000000000fd4a', 'ab0baa05ced6c972']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 6803916 KIND no_slot
+ stored : ['cccbdf5795b569ec', 'a747141fbd0067d1', '000000000000238a', 'b569ec69d6ba14fd']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 2913657097 KIND no_slot
+ stored : ['098bbcc8119661c9', '9e8c1c46f8adaae1', '000000000000685f', '9661c9701b6cd7a9']
+ computed: (no dump data)
+
+ROW 2 ROUND 0 SLOT 0 HALF 3895822195 KIND no_slot
+ stored : ['73abec7affa7a3f4', '27b997fd04e83587', '000000000000e407', 'a7a3f48cd93f7d09']
+ computed: (no dump data)
