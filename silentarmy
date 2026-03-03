@@ -348,6 +348,13 @@ class Silentarmy:
             very_verbose('From solver %s: %s' % (devid, solline))
             decoded = decode_solver_line(solline)
             if decoded[0] == 'sol':
+                # Check if we're properly subscribed before submitting
+                if self.nonce_leftpart is None:
+                    verbose('Solver %s: ignoring solution - no extraNonce1 yet' % devid)
+                    return
+                if self.st_state != 'AUTHORIZED':
+                    verbose('Solver %s: ignoring solution - not authorized yet' % devid)
+                    return
                 very_verbose('Solver %s: submitting share: %s' % \
                         (devid, str(decoded[1:])))
                 # decoded[1:] = (job_id, ntime, nonce_rightpart, sol)
