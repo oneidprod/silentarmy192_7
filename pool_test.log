@@ -1,0 +1,74 @@
+Connecting to equihash192.na.mine.zpool.ca:2192
+Solver 0.0: launching
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "30a0"
+Stratum server sent us the first job
+Mining on 1 device
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001001a19...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001001b4a...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd90010055bb...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001013724...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900101412b...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001018e67...
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900102010b...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900102b590...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900102cf56...
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Stratum server returned an error: [20, 'Invalid nonce size', None]
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Received job "30a2"
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+Total 0.0 sol/s [dev0 0.0] 9 shares
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900100177b...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001001ef4...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd90010046b6...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd900100496e...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001004de1...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001005200...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001005752...
+DEBUG: job_id=30a0, ntime=9503a769, nonce=db3c0100f413a6dd
+DEBUG: sol length=806, sol prefix=fd9001006da5...
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Total 152.8 sol/s [dev0 198.7] 17 shares
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Stratum server returned an error: [21, 'Invalid job id', None]
+Total 141.9 sol/s [dev0 198.7] 17 shares

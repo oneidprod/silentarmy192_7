@@ -17,7 +17,7 @@ export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/beignet":$LD_LIBRARY_PATH
 # PASS=x
 
 #zpool
-POOL=stratum+tcp://equihash192.na.mine.zpool.ca:2192#xnsub
+POOL=stratum+tcp://equihash192.na.mine.zpool.ca:2192
 WALLET=t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g
 PASS=test,c=ZER,zap=ZER
 
