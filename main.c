@@ -701,9 +701,8 @@ uint32_t print_solver_line(uint32_t *values, uint8_t *header,
     printf("sol: %s ", job_id);
     p = header + ZCASH_BLOCK_OFFSET_NTIME;
     printf("%02x%02x%02x%02x ", p[0], p[1], p[2], p[3]);
-    // Limit nonce to standard 8 bytes (16 hex chars) for Stratum compatibility
+    // Use full 32-byte nonce (64 hex chars) as required by Equihash pools
     uint32_t nonce_output_len = ZCASH_NONCE_LEN - fixed_nonce_bytes;
-    if (nonce_output_len > 8) nonce_output_len = 8;  // Cap at 8 bytes
     printf("%s ", s_hexdump(header + ZCASH_BLOCK_HEADER_LEN - ZCASH_NONCE_LEN +
 		fixed_nonce_bytes, nonce_output_len));
     printf("%s%s\n", ZCASH_SOLSIZE_HEX,
@@ -834,8 +833,8 @@ uint32_t print_sols(sols_t *all_sols, uint64_t *nonce, uint32_t nr_valid_sols,
 	if (verbose)
 	    print_sol(inputs, nonce);
 	if (mining)
-	    shares += print_solver_line(inputs, header, fixed_nonce_bytes,
-		    target, job_id); // Use original double SHA256
+	    shares += print_solver_line_blake2b(inputs, header, fixed_nonce_bytes,
+		    target, job_id); // Use Blake2b for Zero coin (Equihash 192,7)
       }
     free(valid_sols);
     return shares;
