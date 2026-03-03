@@ -888,11 +888,92 @@ void order_indices(uint32_t *indices, uint32_t size)
     }
 }
 
+static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
+{
+    blake2b_state_t st = *ctx;
+    const uint32_t hashes_per_blake = 512 / PARAM_N;
+    const uint32_t hash_bytes = PARAM_N / 8;
+    uint8_t full_hash[ZCASH_HASH_LEN];
+    uint8_t block[128];  // Must be zero-padded to 128 bytes for zcash_blake2b_update
+    uint32_t g = idx / hashes_per_blake;
+
+    // Zero-pad the 4-byte index to full block size
+    memset(block, 0, sizeof(block));
+    block[0] = (uint8_t)(g & 0xff);
+    block[1] = (uint8_t)((g >> 8) & 0xff);
+    block[2] = (uint8_t)((g >> 16) & 0xff);
+    block[3] = (uint8_t)((g >> 24) & 0xff);
+
+    zcash_blake2b_update(&st, block, 4, 1);  // msg_len=4, buffer zero-padded to 128, is_final=1
+    zcash_blake2b_final(&st, full_hash, sizeof(full_hash));
+    memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
+}
+
+static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
+{
+    const uint32_t hash_bytes = PARAM_N / 8;
+
+    if (r == 0) {
+        eh_genhash(ctx, *indices, hash);
+        return 1;
+    }
+
+    uint32_t *indices1 = indices + (1 << (r - 1));
+    if (*indices >= *indices1) {
+        if (r == PARAM_K) {  // Only log top-level failures to avoid spam
+            fprintf(stderr, "VERIFY FAIL: ordering violation at r=%d, indices[0]=%u >= indices[%d]=%u\n",
+                    r, *indices, (1 << (r - 1)), *indices1);
+        }
+        return 0;
+    }
+
+    uint8_t hash0[hash_bytes], hash1[hash_bytes];
+    if (!eh_verifyrec(ctx, indices, hash0, r - 1))
+        return 0;
+    if (!eh_verifyrec(ctx, indices1, hash1, r - 1))
+        return 0;
+
+    for (uint32_t i = 0; i < hash_bytes; i++)
+        hash[i] = hash0[i] ^ hash1[i];
+
+    int b = r < PARAM_K ? r * PREFIX : PARAM_N;
+    int i;
+    for (i = 0; i < b / 8; i++) {
+        if (hash[i]) {
+            if (r == PARAM_K) {  // Only log top-level failures
+                fprintf(stderr, "VERIFY FAIL: XOR byte %d is %02x at r=%d (need %d zero bits)\n",
+                        i, hash[i], r, b);
+            }
+            return 0;
+        }
+    }
+    if ((b % 8) && (hash[i] >> (8 - (b % 8)))) {
+        if (r == PARAM_K) {  // Only log top-level failures
+            fprintf(stderr, "VERIFY FAIL: XOR partial byte %d has non-zero high bits: %02x at r=%d\n",
+                    i, hash[i], r);
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
+{
+    blake2b_state_t ctx;
+    uint8_t hash[PARAM_N / 8];
+
+    zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    zcash_blake2b_update(&ctx, header, 128, 0);
+    zcash_blake2b_update(&ctx, header + 128, ZCASH_BLOCK_HEADER_LEN - 128, 0);
+
+    return eh_verifyrec(&ctx, indices, hash, PARAM_K);
+}
+
 /*
 ** If solution is invalid return 0. If solution is valid, sort the inputs
 ** and return 1.
 */
-uint32_t verify_sol(sols_t *sols, unsigned sol_i)
+uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
 {
     uint32_t	*inputs = sols->values[sol_i];
     uint32_t	seen_len = (1 << (PREFIX + 1)) / 8;
@@ -939,6 +1020,12 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i)
     for (uint32_t level = 0; level < PARAM_K; level++)
 	for (i = 0; i < (1 << PARAM_K); i += (2 << level))
 	    sort_pair(&inputs[i], 1 << level);
+
+    if (!verify_equihash_full(inputs, header)) {
+	sols->valid[sol_i] = 0;
+	return 0;
+    }
+
     return 1;
 }
 
@@ -1007,7 +1094,7 @@ uint32_t verify_sols(cl_command_queue queue, cl_mem buf_sols, uint64_t *nonce,
     debug("Retrieved %d potential solutions\n", sols->nr);
     nr_valid_sols = 0;
     for (unsigned sol_i = 0; sol_i < sols->nr; sol_i++)
-	nr_valid_sols += verify_sol(sols, sol_i);
+	nr_valid_sols += verify_sol(sols, sol_i, header);
     uint32_t sh = print_sols(sols, nonce, nr_valid_sols, header,
 	    fixed_nonce_bytes, target, job_id);
     if (shares)
