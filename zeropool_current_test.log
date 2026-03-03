@@ -1,0 +1,44 @@
+/home/mine/silentarmy192_7/./silentarmy:191: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def reconnect(self):
+/home/mine/silentarmy192_7/./silentarmy:210: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def show_stats(self):
+/home/mine/silentarmy192_7/./silentarmy:308: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def start_solvers(self, devid):
+DEBUG:asyncio:Get address info zeropool.io:1241, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver' stdin=<pipe> stdout=stderr=<pipe>
+DEBUG:asyncio:process '/home/mine/silentarmy192_7/sa-solver' created: pid 12184
+DEBUG:asyncio:Getting address info zeropool.io:1241, type=<SocketKind.SOCK_STREAM: 1> took 3.413ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('73.50.172.80', 1241))]
+DEBUG:asyncio:Write pipe 8 connected: (<_UnixWritePipeTransport fd=8 idle bufsize=0>, <WriteSubprocessPipeProto fd=0 pipe=<_UnixWritePipeTransport fd=8 idle bufsize=0>>)
+DEBUG:asyncio:Read pipe 6 connected: (<_UnixReadPipeTransport fd=6 polling>, <ReadSubprocessPipeProto fd=1 pipe=<_UnixReadPipeTransport fd=6 polling>>)
+INFO:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver': <_UnixSubprocessTransport pid=12184 running stdin=<_UnixWritePipeTransport fd=8 idle bufsize=0> stdout=<_UnixReadPipeTransport fd=6 polling>>
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 59448), raddr=('73.50.172.80', 1241)> connected to zeropool.io:1241: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7fd1c67cc160>)
+Connecting to zeropool.io:1241
+Solver 0.0: launching
+Successfully connected to zeropool.io:1241
+Received target 00a0000000000000000000000000000000000000000000000000000000000000
+Received job "f8f5"
+Stratum server sent us the first job
+Mining on 1 device
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100002c...
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001000c9c...
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001002252...
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100565e...
+Stratum server returned an error: [20, 'invalid solution']
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100a2a2...
+DEBUG: job_id=f8f5, ntime=7c1aa769, nonce=0a3156f2a1493306d45e2b1c11690282000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001015866...
+Stratum server returned an error: [20, 'invalid solution']
+Stratum server returned an error: [20, 'invalid solution']
+Stratum server returned an error: [20, 'invalid solution']
+Stratum server returned an error: [20, 'invalid solution']
+Stratum server returned an error: [20, 'invalid solution']
+Total 0.0 sol/s [dev0 0.0] 6 shares
+Total 0.0 sol/s [dev0 0.0] 6 shares
+Total 0.0 sol/s [dev0 0.0] 6 shares
+Total 0.0 sol/s [dev0 0.0] 6 shares
+Total 0.0 sol/s [dev0 0.0] 6 shares

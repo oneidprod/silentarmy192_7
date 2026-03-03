@@ -1,0 +1,79 @@
+/home/mine/silentarmy192_7/./silentarmy:191: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def reconnect(self):
+/home/mine/silentarmy192_7/./silentarmy:210: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def show_stats(self):
+/home/mine/silentarmy192_7/./silentarmy:308: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
+  def start_solvers(self, devid):
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver' stdin=<pipe> stdout=stderr=<pipe>
+DEBUG:asyncio:process '/home/mine/silentarmy192_7/sa-solver' created: pid 11255
+DEBUG:asyncio:Write pipe 8 connected: (<_UnixWritePipeTransport fd=8 idle bufsize=0>, <WriteSubprocessPipeProto fd=0 pipe=<_UnixWritePipeTransport fd=8 idle bufsize=0>>)
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 3.904ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+DEBUG:asyncio:Read pipe 6 connected: (<_UnixReadPipeTransport fd=6 polling>, <ReadSubprocessPipeProto fd=1 pipe=<_UnixReadPipeTransport fd=6 polling>>)
+INFO:asyncio:execute program '/home/mine/silentarmy192_7/sa-solver': <_UnixSubprocessTransport pid=11255 running stdin=<_UnixWritePipeTransport fd=8 idle bufsize=0> stdout=<_UnixReadPipeTransport fd=6 polling>>
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 34326), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f0aa6fea160>)
+Connecting to equihash192.na.mine.zpool.ca:2192
+Solver 0.0: launching
+Successfully connected to equihash192.na.mine.zpool.ca:2192
+Received target 00ffff0000000000000000000000000000000000000000000000000000000000
+Received job "20de5"
+Stratum server sent us the first job
+Mining on 1 device
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001003b3a...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd90010077fc...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001007ff9...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100a604...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100c953...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001012143...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dbfb5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001014eb2...
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+Total 0.0 sol/s [dev0 0.0] 7 shares
+DEBUG:asyncio:<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>> received EOF
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100065a...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001002602...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001002a0e...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd9001003a56...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100426f...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100cf46...
+DEBUG: job_id=20de5, ntime=ba16a769, nonce=3f8f3acfd8c3c26c96be31f13dc0b5f7000000000000000000000000
+DEBUG: sol length=806, sol prefix=fd900100fb04...
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum server returned an error: [25, 'Invalid share', None]
+Stratum: connection was closed (invalid user/pwd?)
+Total 152.9 sol/s [dev0 198.7] 14 shares
+DEBUG:asyncio:Get address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1>
+DEBUG:asyncio:Getting address info equihash192.na.mine.zpool.ca:2192, type=<SocketKind.SOCK_STREAM: 1> took 2.354ms: [(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('198.50.168.213', 2192))]
+Connecting to equihash192.na.mine.zpool.ca:2192 (attempt 2)
+Total 141.9 sol/s [dev0 198.8] 14 shares
+DEBUG:asyncio:<asyncio.TransportSocket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=6, laddr=('10.42.0.120', 34334), raddr=('198.50.168.213', 2192)> connected to equihash192.na.mine.zpool.ca:2192: (<_SelectorSocketTransport fd=7 read=polling write=<idle, bufsize=0>>, <__main__.StratumClientProtocol object at 0x7f0aa6fea160>)
