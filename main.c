@@ -982,7 +982,6 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
 {
     uint32_t	*inputs = sols->values[sol_i];
     uint32_t	seen_len = (1 << (PREFIX + 1)) / 8;
-    uint8_t	seen[seen_len];
     uint32_t	i;
     uint8_t	tmp;
     
@@ -995,15 +994,22 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
                 (1u << PREFIX) - 1, seen_len);
     }
     
+    // Allocate dynamically to avoid 4MB stack overflow
+    uint8_t *seen = malloc(seen_len);
+    if (!seen) {
+        fprintf(stderr, "FATAL: Failed to allocate %u bytes for duplicate check\n", seen_len);
+        sols->valid[sol_i] = 0;
+        return 0;
+    }
+    
     // look for duplicate inputs
     memset(seen, 0, seen_len);
     for (i = 0; i < (1 << PARAM_K); i++)
       {
 	if (inputs[i] / 8 >= seen_len)
 	  {
-	    warn("Invalid input retrieved from device: %d (max_allowed=%d)\n", 
-                 inputs[i], seen_len * 8 - 1);
 	    sols->valid[sol_i] = 0;
+	    free(seen);
 	    return 0;
 	  }
 	tmp = seen[inputs[i] / 8];
@@ -1012,9 +1018,12 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
 	  {
 	    // at least one input value is a duplicate
 	    sols->valid[sol_i] = 0;
+	    free(seen);
 	    return 0;
 	  }
       }
+    
+    free(seen);
     // the valid flag is already set by the GPU, but set it again because
     // I plan to change the GPU code to not set it
     sols->valid[sol_i] = 1;
