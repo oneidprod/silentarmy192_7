@@ -899,20 +899,49 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
     /* Copy state and update with the index using zcash_blake2b */
     blake2b_state_t st = *ctx;
     
-    /* CRITICAL FIX: Convert index to little-endian like Tromp does
-       This is the key difference that was breaking GPU solutions */
+    /* CRITICAL FIX: Match GPU message format
+       GPU stores TWO indices per input: ht_store(input*2) and ht_store(input*2+1)
+       So for idx, we need input = idx/2 = idx/hashes_per_blake
+       GPU does: ulong word1 = (ulong)input << 32; */
     uint32_t g = idx / hashes_per_blake;
-    uint32_t leb = htole32(g);
     
-    /* Update with exactly 4 bytes in little-endian format
-       CRITICAL: is_final=1 to mark this as the final block (like GPU does)
-       This sets v[14] ^= -1 which is necessary for proper Blake2b compression */
-    zcash_blake2b_update(&st, (const uint8_t *)&leb, sizeof(uint32_t), 1);
+    // Create 128-byte zero-padded message block
+    uint64_t message[16] = {0};  // 16 * 8 = 128 bytes
+    
+    // GPU: word1 = (ulong)input << 32 in HIGH 32 bits of SECOND ulong word (message[1])
+    message[1] = ((uint64_t)g) << 32;
+    
+    /* CRITICAL: Match GPU byte counter!
+       GPU does: v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4 = 144
+       But st->bytes = 128 (from partial header processing)
+       Adjust st->bytes to 140 so that 140 + msg_len(4) = 144 */
+    st.bytes = ZCASH_BLOCK_HEADER_LEN;  // Set to 140
+    
+    /* Update with 128-byte message block BUT report only 4 bytes added
+       CRITICAL: msg_len affects v[12] byte counter, must be 4 to match GPU
+       GPU does: v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4 = 144
+       CPU now: st->bytes=140 + 4 = 144 (matches!)
+       Note: zcash_blake2b_update still reads full 128-byte message block */
+    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
     
     /* Final compression */
     zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
+    
+    // DEBUG: Print comprehensive hash info
+    static int debug_count = 0;
+    if (debug_count < 2) {
+        fprintf(stderr, "CPU full_hash[idx=%u g=%u msg[1]=0x%016lx bytes=%lu]: ",
+                idx, g, message[1], st.bytes);
+        for (int i = 0; i < ZCASH_HASH_LEN; i++)
+            fprintf(stderr, "%02x", full_hash[i]);
+        fprintf(stderr, "\nExtracted hash[offset=%u]: ", (idx % hashes_per_blake) * hash_bytes);
+        for (int i = 0; i < hash_bytes; i++)
+            fprintf(stderr, "%02x", hash[i]);
+        fprintf(stderr, "\n");
+        debug_count++;
+    }
 }
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
@@ -939,14 +968,35 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
     if (!eh_verifyrec(ctx, indices1, hash1, r - 1))
         return 0;
 
+    // DEBUG: Print Round 1 hashes before XOR for first solution
+    static int xor_debug = 0;
+    if (r == 1 && xor_debug < 2) {
+        fprintf(stderr, "Round %d hash0[idx=%u]: ", r, *indices);
+        for (int j = 0; j < 8; j++)
+            fprintf(stderr, "%02x", hash0[j]);
+        fprintf(stderr, "\nRound %d hash1[idx=%u]: ", r, *indices1);
+        for (int j = 0; j < 8; j++)
+            fprintf(stderr, "%02x", hash1[j]);
+        fprintf(stderr, "\n");
+    }
+
     for (uint32_t i = 0; i < hash_bytes; i++)
         hash[i] = hash0[i] ^ hash1[i];
+
+    // DEBUG: Print Round 1 XOR result for first solution
+    if (r == 1 && xor_debug < 2) {
+        fprintf(stderr, "Round %d XOR: ", r);
+        for (int j = 0; j < 8; j++)
+            fprintf(stderr, "%02x", hash[j]);
+        fprintf(stderr, " (need %d zero bits)\n", r * PREFIX);
+        xor_debug++;
+    }
 
     int b = r < PARAM_K ? r * PREFIX : PARAM_N;
     int i;
     for (i = 0; i < b / 8; i++) {
         if (hash[i]) {
-            if (r == PARAM_K) {  // Only log top-level failures
+            if (r == PARAM_K || r == 1) {  // Log top-level and Round 1 failures
                 fprintf(stderr, "VERIFY FAIL: XOR byte %d is %02x at r=%d (need %d zero bits)\n",
                         i, hash[i], r, b);
             }
