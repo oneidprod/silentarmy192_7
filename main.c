@@ -986,9 +986,6 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
     uint32_t	i;
     uint8_t	tmp;
     
-    // Apply Wagner ordering before verification
-    order_indices(inputs, 1 << PARAM_K);
-    
     // Debug: print first few indices to understand the range  
     if (sol_i < 3) {
         fprintf(stderr, "Debug sol %d: indices[0-7] = ", sol_i);
