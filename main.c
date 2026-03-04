@@ -20,6 +20,7 @@
 #include "sha256.h"
 #include <signal.h>
 #include <execinfo.h>
+#include "equihash_tromp/blake/blake2.h"	/* For correct blake2b_update/final */
 
 typedef uint8_t		uchar;
 typedef uint32_t	uint;
@@ -890,21 +891,27 @@ void order_indices(uint32_t *indices, uint32_t size)
 
 static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
 {
-    blake2b_state_t st = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;
     const uint32_t hash_bytes = PARAM_N / 8;
     uint8_t full_hash[ZCASH_HASH_LEN];
-    uint8_t block[128];  // Must be zero-padded to 128 bytes for zcash_blake2b_update
     uint32_t g = idx / hashes_per_blake;
-
-    // Zero-pad the 4-byte index to full block size
+    
+    /* Copy state and update with the index using zcash_blake2b */
+    blake2b_state_t st = *ctx;
+    
+    /* Format message like Tromp does: little-endian uint32_t packed into buffer */
+    uint8_t msg[4];
+    msg[0] = (uint8_t)(g & 0xff);
+    msg[1] = (uint8_t)((g >> 8) & 0xff);
+    msg[2] = (uint8_t)((g >> 16) & 0xff);
+    msg[3] = (uint8_t)((g >> 24) & 0xff);
+    
+    /* Update with just the 4 bytes, then finalize */
+    uint8_t block[128];
     memset(block, 0, sizeof(block));
-    block[0] = (uint8_t)(g & 0xff);
-    block[1] = (uint8_t)((g >> 8) & 0xff);
-    block[2] = (uint8_t)((g >> 16) & 0xff);
-    block[3] = (uint8_t)((g >> 24) & 0xff);
-
-    zcash_blake2b_update(&st, block, 4, 1);  // msg_len=4, buffer zero-padded to 128, is_final=1
+    memcpy(block, msg, sizeof(msg));
+    
+    zcash_blake2b_update(&st, block, sizeof(msg), 1);  /* msg_len=4, is_final=1 */
     zcash_blake2b_final(&st, full_hash, sizeof(full_hash));
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }

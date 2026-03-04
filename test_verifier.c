@@ -4,36 +4,35 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <endian.h>
 
 typedef uint8_t uchar;
 typedef uint32_t uint;
 
 #include "param.h"
-#include "blake.h"
+#include "equihash_tromp/blake/blake2.h"
 
-// Verification functions (from main.c)
-static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
+/* Define htole32 for little-endian conversion if not available */
+#ifndef htole32
+#define htole32(x) ((uint32_t)(x))  /* Assume little-endian host */
+#endif
+
+// Verification functions (using Tromp's blake2b)
+static void eh_genhash(const blake2b_state *ctx, uint32_t idx, uint8_t *hash)
 {
-    blake2b_state_t st = *ctx;
+    blake2b_state state = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;
     const uint32_t hash_bytes = PARAM_N / 8;
     uint8_t full_hash[ZCASH_HASH_LEN];
-    uint8_t block[128];  // Must be zero-padded to 128 bytes for final block
     uint32_t g = idx / hashes_per_blake;
 
-    // Zero-pad the 4-byte index to full block size
-    memset(block, 0, sizeof(block));
-    block[0] = (uint8_t)(g & 0xff);
-    block[1] = (uint8_t)((g >> 8) & 0xff);
-    block[2] = (uint8_t)((g >> 16) & 0xff);
-    block[3] = (uint8_t)((g >> 24) & 0xff);
-
-    zcash_blake2b_update(&st, block, 4, 1);  // msg_len=4 (actual data), buffer zero-padded to 128, is_final=1
-    zcash_blake2b_final(&st, full_hash, sizeof(full_hash));
+    /* Use Tromp's blake2b_update with proper internal buffering */
+    blake2b_update(&state, (uchar *)&g, sizeof(uint32_t));
+    blake2b_final(&state, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
-static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
+static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
@@ -81,12 +80,27 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
 
 static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
 {
-    blake2b_state_t ctx;
+    blake2b_state ctx;
     uint8_t hash[PARAM_N / 8];
-
-    zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&ctx, header, 128, 0);
-    zcash_blake2b_update(&ctx, header + 128, ZCASH_BLOCK_HEADER_LEN - 128, 0);
+    
+    /* Initialize blake2b with proper personalization for Zero Equihash 192,7 */
+    /* Tromp's setheader logic */
+    char personals[16];
+    memcpy(personals + 0, "ZERO_PoW", 8);
+    uint32_t le_N = htole32(PARAM_N);
+    memcpy(personals + 8, &le_N, 4);
+    uint32_t le_K = htole32(PARAM_K);
+    memcpy(personals + 12, &le_K, 4);
+    
+    blake2b_param P;
+    memset(&P, 0, sizeof(blake2b_param));
+    P.digest_length = ZCASH_HASH_LEN;
+    P.fanout = 1;
+    P.depth = 1;
+    memcpy(P.personal, (const uint8_t *)personals, 16);
+    
+    blake2b_init_param(&ctx, &P);
+    blake2b_update(&ctx, header, ZCASH_BLOCK_HEADER_LEN);
 
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
