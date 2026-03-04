@@ -905,8 +905,9 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
     uint32_t leb = htole32(g);
     
     /* Update with exactly 4 bytes in little-endian format
-       is_final=0 means this is not the final block */
-    zcash_blake2b_update(&st, (const uint8_t *)&leb, sizeof(uint32_t), 0);
+       CRITICAL: is_final=1 to mark this as the final block (like GPU does)
+       This sets v[14] ^= -1 which is necessary for proper Blake2b compression */
+    zcash_blake2b_update(&st, (const uint8_t *)&leb, sizeof(uint32_t), 1);
     
     /* Final compression */
     zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
@@ -968,8 +969,12 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
     uint8_t hash[PARAM_N / 8];
 
     zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    
+    // CRITICAL: Match GPU kernel_round0 behavior
+    // GPU uses ONLY the first 128 bytes of header before mixing in index
+    // If we process the full 140 bytes here, blake_state won't match GPU's
     zcash_blake2b_update(&ctx, header, 128, 0);
-    zcash_blake2b_update(&ctx, header + 128, ZCASH_BLOCK_HEADER_LEN - 128, 0);
+    // DO NOT process remaining 12 bytes - GPU doesn't either
 
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }

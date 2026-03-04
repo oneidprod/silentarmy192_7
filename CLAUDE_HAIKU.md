@@ -144,6 +144,39 @@ buf_blake_st = send(blake.h);  // Now passes complete state
 - Need to deeply understand GPU kernel_round0 before applying fix
 - Current understanding may be incomplete
 
+## 🚨 REAL ROOT CAUSE FOUND - Blake2b Implementation Broken
+
+**THE ACTUAL BUG**: `zcash_blake2b_final()` is NOT doing final compression!
+
+```c
+void zcash_blake2b_final(blake2b_state_t *st, uint8_t *out, uint8_t outlen)
+{
+    assert(outlen <= 64);
+    memcpy(out, st->h, outlen);  // <-- Just dumps raw state, no final compression!
+}
+```
+
+**What Should Happen** (Real Blake2b):
+1. Multiple calls to blake2b_update() for data
+2. Final call marks `is_final=1`
+3. blake2b_final() performs one more compression round with final flag
+4. Returns the compressed output
+
+**What Actually Happens** (Silentarmy):
+1. zcash_blake2b_update() modifies st->h with XOR operations
+2. zcash_blake2b_final() just copies the intermediate st->h state
+3. No final compression - raw internal state returned as hash!
+
+**GPU vs CPU Comparison**:
+- **GPU kernel_round0**: Does full blake2b mix rounds (lines 508+), produces proper compressed output
+- **CPU eh_genhash()**: Calls zcash_blake2b_update then zcash_blake2b_final (which copies state), gets wrong output
+
+**Impact**:
+- GPU's hashes are properly compressed Blake2b output
+- CPU's hashes are uncompressed intermediate states  
+- Wagner tree XOR never matches because hashes are fundamentally different
+- 0 valid solutions because CPU rejects all GPU indices on XOR check
+
 ### Files Modified This Session (Phase 2)
 - main.c: 
   - Removed `order_indices()` call from verify_sol() (tested but doesn't help)
