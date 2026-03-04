@@ -36,10 +36,15 @@ Result: ✓ VERIFICATION PASSED
 - Problem IS in GPU solver/solution format
 
 ### Next Phase
-**Phase 2: Fix GPU Kernel** - The GPU solver needs to use correct Blake2b implementation. Since GPU can't easily use Tromp's blake2b.cpp (C++ code), we need to either:
-1. Port zcash_blake2b_final() to do proper compression/finalization
-2. Use a different blake2b implementation compatible with OpenCL
-3. Generate solutions on CPU using Tromp's code as reference
+**Phase 2: Test Pool Acceptance** - Now that we have a working CPU verifier and can generate valid solutions with eq1927, test if:
+1. GPU miner's solutions pass CPU verifier 
+2. Solutions get accepted by pools (error 20 was rejection)
+3. Solution encoding/format is correct for pool protocol
+
+Options:
+- Option A: Test GPU miner output directly against test_verifier
+- Option B: Submit eq1927 solutions to pool via stratum protocol
+- Option C: Compare GPU solution format byte-by-byte with eq1927 format
 
 ### Test Case
 ```
@@ -51,8 +56,16 @@ Current: FAIL at r=1, XOR byte 0 = 03
 
 ### Session Progress
 - Phase 1: ✅ 100% complete - CPU verification works correctly!
-- Phase 2: ⏳ Ready to start - GPU kernel blake2b needs fixing
+- Phase 2: ⏳ Ready to start - Test pool acceptance with valid solutions
 - Phase 3: Blocked until Phase 2 succeeds
+
+### Critical Decision Point
+We now have two paths forward:
+1. **Verify GPU miner**: Does it generate solutions that pass test_verifier?
+2. **Skip GPU, use eq1927**: Since eq1927 generates valid solutions, can we use those directly?
+3. **Pool testing**: Does pool accept eq1927 solutions when submitted via stratum?
+
+The original error "20" from pools was solution format rejection. Now we can validate whether solutions are the issue or protocol submission is.
 
 ### Files Modified This Session
 - test_verifier.c: Uses Tromp's blake2b, passes verification
