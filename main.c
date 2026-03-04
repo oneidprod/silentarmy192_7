@@ -929,24 +929,12 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
     
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
     
-    // DEBUG: Print comprehensive hash info
-    static int debug_count = 0;
-    if (debug_count < 2) {
-        fprintf(stderr, "CPU full_hash[idx=%u g=%u msg[1]=0x%016lx bytes=%lu]: ",
-                idx, g, message[1], st.bytes);
-        for (int i = 0; i < ZCASH_HASH_LEN; i++)
-            fprintf(stderr, "%02x", full_hash[i]);
-        fprintf(stderr, "\nExtracted hash[offset=%u]: ", (idx % hashes_per_blake) * hash_bytes);
-        for (int i = 0; i < hash_bytes; i++)
-            fprintf(stderr, "%02x", hash[i]);
-        fprintf(stderr, "\n");
-        debug_count++;
-    }
 }
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
+    static int verify_fail_logs = 0;
 
     if (r == 0) {
         eh_genhash(ctx, *indices, hash);
@@ -955,9 +943,10 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
 
     uint32_t *indices1 = indices + (1 << (r - 1));
     if (*indices >= *indices1) {
-        if (r == PARAM_K) {  // Only log top-level failures to avoid spam
+        if (verify_fail_logs < 20) {
             fprintf(stderr, "VERIFY FAIL: ordering violation at r=%d, indices[0]=%u >= indices[%d]=%u\n",
                     r, *indices, (1 << (r - 1)), *indices1);
+            verify_fail_logs++;
         }
         return 0;
     }
@@ -968,45 +957,26 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
     if (!eh_verifyrec(ctx, indices1, hash1, r - 1))
         return 0;
 
-    // DEBUG: Print Round 1 hashes before XOR for first solution
-    static int xor_debug = 0;
-    if (r == 1 && xor_debug < 2) {
-        fprintf(stderr, "Round %d hash0[idx=%u]: ", r, *indices);
-        for (int j = 0; j < 8; j++)
-            fprintf(stderr, "%02x", hash0[j]);
-        fprintf(stderr, "\nRound %d hash1[idx=%u]: ", r, *indices1);
-        for (int j = 0; j < 8; j++)
-            fprintf(stderr, "%02x", hash1[j]);
-        fprintf(stderr, "\n");
-    }
-
     for (uint32_t i = 0; i < hash_bytes; i++)
         hash[i] = hash0[i] ^ hash1[i];
-
-    // DEBUG: Print Round 1 XOR result for first solution
-    if (r == 1 && xor_debug < 2) {
-        fprintf(stderr, "Round %d XOR: ", r);
-        for (int j = 0; j < 8; j++)
-            fprintf(stderr, "%02x", hash[j]);
-        fprintf(stderr, " (need %d zero bits)\n", r * PREFIX);
-        xor_debug++;
-    }
 
     int b = r < PARAM_K ? r * PREFIX : PARAM_N;
     int i;
     for (i = 0; i < b / 8; i++) {
         if (hash[i]) {
-            if (r == PARAM_K || r == 1) {  // Log top-level and Round 1 failures
+            if (verify_fail_logs < 20) {
                 fprintf(stderr, "VERIFY FAIL: XOR byte %d is %02x at r=%d (need %d zero bits)\n",
                         i, hash[i], r, b);
+                verify_fail_logs++;
             }
             return 0;
         }
     }
     if ((b % 8) && (hash[i] >> (8 - (b % 8)))) {
-        if (r == PARAM_K) {  // Only log top-level failures
+        if (verify_fail_logs < 20) {
             fprintf(stderr, "VERIFY FAIL: XOR partial byte %d has non-zero high bits: %02x at r=%d\n",
                     i, hash[i], r);
+            verify_fail_logs++;
         }
         return 0;
     }
@@ -1029,6 +999,11 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
 
+static uint64_t verify_fail_oob = 0;
+static uint64_t verify_fail_dup = 0;
+static uint64_t verify_fail_eh = 0;
+static uint64_t verify_ok = 0;
+
 /*
 ** If solution is invalid return 0. If solution is valid, sort the inputs
 ** and return 1.
@@ -1039,15 +1014,6 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
     uint32_t	seen_len = (1 << (PREFIX + 1)) / 8;
     uint32_t	i;
     uint8_t	tmp;
-    
-    // Debug: print first few indices to understand the range  
-    if (sol_i < 3) {
-        fprintf(stderr, "Debug sol %d: indices[0-7] = ", sol_i);
-        for (i = 0; i < 8 && i < (1 << PARAM_K); i++)
-            fprintf(stderr, "%u ", inputs[i]);
-        fprintf(stderr, " ... max_expected=%u seen_len=%u\n", 
-                (1u << PREFIX) - 1, seen_len);
-    }
     
     // Allocate dynamically to avoid 4MB stack overflow
     uint8_t *seen = malloc(seen_len);
@@ -1064,6 +1030,7 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
 	if (inputs[i] / 8 >= seen_len)
 	  {
 	    sols->valid[sol_i] = 0;
+        verify_fail_oob++;
 	    free(seen);
 	    return 0;
 	  }
@@ -1073,6 +1040,7 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
 	  {
 	    // at least one input value is a duplicate
 	    sols->valid[sol_i] = 0;
+        verify_fail_dup++;
 	    free(seen);
 	    return 0;
 	  }
@@ -1082,15 +1050,18 @@ uint32_t verify_sol(sols_t *sols, unsigned sol_i, uint8_t *header)
     // the valid flag is already set by the GPU, but set it again because
     // I plan to change the GPU code to not set it
     sols->valid[sol_i] = 1;
-    // sort the pairs in place
-    for (uint32_t level = 0; level < PARAM_K; level++)
-	for (i = 0; i < (1 << PARAM_K); i += (2 << level))
-	    sort_pair(&inputs[i], 1 << level);
+    uint32_t ordered_inputs[1 << PARAM_K];
+    memcpy(ordered_inputs, inputs, sizeof(ordered_inputs));
+    order_indices(ordered_inputs, 1 << PARAM_K);
 
-    if (!verify_equihash_full(inputs, header)) {
+    if (!verify_equihash_full(ordered_inputs, header)) {
 	sols->valid[sol_i] = 0;
+	verify_fail_eh++;
 	return 0;
     }
+
+    memcpy(inputs, ordered_inputs, sizeof(ordered_inputs));
+    verify_ok++;
 
     return 1;
 }
@@ -1159,8 +1130,11 @@ uint32_t verify_sols(cl_command_queue queue, cl_mem buf_sols, uint64_t *nonce,
       }
     debug("Retrieved %d potential solutions\n", sols->nr);
     nr_valid_sols = 0;
+    verify_fail_oob = verify_fail_dup = verify_fail_eh = verify_ok = 0;
     for (unsigned sol_i = 0; sol_i < sols->nr; sol_i++)
 	nr_valid_sols += verify_sol(sols, sol_i, header);
+    fprintf(stderr, "verify breakdown: ok=%lu eh_fail=%lu dup_fail=%lu oob_fail=%lu\n",
+            verify_ok, verify_fail_eh, verify_fail_dup, verify_fail_oob);
     uint32_t sh = print_sols(sols, nonce, nr_valid_sols, header,
 	    fixed_nonce_bytes, target, job_id);
     if (shares)
