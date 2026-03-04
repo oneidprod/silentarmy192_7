@@ -16,12 +16,18 @@
 - ✅ **SOLUTION**: Generated fresh solution with eq1927 for empty header
 - ✅ **RESULT**: Verification passes perfectly with matched data!
 
-**Test Result**:
+**Test Results**:
 ```
-Header: 280 zeros (empty header)
-Solution: From eq1927 -s -h "" -p "ZERO_PoW" -n 0
+Test 1 - Empty header (280 zeros):  
+Result: ✓ VERIFICATION PASSED
+
+Test 2 - Real blockchain header:  
+Header: 140 bytes from Zero blockchain
+Nonce fix: Bytes 108-111 must match eq1927's nonce parameter
 Result: ✓ VERIFICATION PASSED
 ```
+
+**Critical Discovery**: Nonce location is at **byte offset 108-111** (u32 index [27]), NOT at the end of the header!
 
 **What This Means**:
 - CPU verification logic is correct
