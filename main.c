@@ -14,6 +14,7 @@
 #include <getopt.h>
 #include <errno.h>
 #include <time.h>
+#include <endian.h>
 #include <CL/cl.h>
 #include "blake.h"
 #include "_kernel.h"
@@ -894,25 +895,22 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
     const uint32_t hashes_per_blake = 512 / PARAM_N;
     const uint32_t hash_bytes = PARAM_N / 8;
     uint8_t full_hash[ZCASH_HASH_LEN];
-    uint32_t g = idx / hashes_per_blake;
     
     /* Copy state and update with the index using zcash_blake2b */
     blake2b_state_t st = *ctx;
     
-    /* Format message like Tromp does: little-endian uint32_t packed into buffer */
-    uint8_t msg[4];
-    msg[0] = (uint8_t)(g & 0xff);
-    msg[1] = (uint8_t)((g >> 8) & 0xff);
-    msg[2] = (uint8_t)((g >> 16) & 0xff);
-    msg[3] = (uint8_t)((g >> 24) & 0xff);
+    /* CRITICAL FIX: Convert index to little-endian like Tromp does
+       This is the key difference that was breaking GPU solutions */
+    uint32_t g = idx / hashes_per_blake;
+    uint32_t leb = htole32(g);
     
-    /* Update with just the 4 bytes, then finalize */
-    uint8_t block[128];
-    memset(block, 0, sizeof(block));
-    memcpy(block, msg, sizeof(msg));
+    /* Update with exactly 4 bytes in little-endian format
+       is_final=0 means this is not the final block */
+    zcash_blake2b_update(&st, (const uint8_t *)&leb, sizeof(uint32_t), 0);
     
-    zcash_blake2b_update(&st, block, sizeof(msg), 1);  /* msg_len=4, is_final=1 */
-    zcash_blake2b_final(&st, full_hash, sizeof(full_hash));
+    /* Final compression */
+    zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
+    
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
