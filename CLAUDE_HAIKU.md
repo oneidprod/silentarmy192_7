@@ -96,6 +96,54 @@ Need to directly compare blake2b outputs:
 3. Find the specific difference (word order? constants? compression rounds? endianness?)
 4. Fix either CPU to match GPU or vice versa
 
+## 🎯 ROOT CAUSE FOUND - Blake2b Header Processing Mismatch
+
+**THE BUG**: solve_equihash() (main.c line 1174) only processes FIRST 128 bytes of header!
+
+```c
+zcash_blake2b_init(&blake, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+zcash_blake2b_update(&blake, header, 128, 0);  // <-- BUG: Only 128 bytes!
+// Header is 140 bytes  - last 12 bytes NOT processed!
+buf_blake_st = check_clCreateBuffer(..., sizeof(blake.h), &blake.h);
+```
+
+**Impact Chain**:
+1. GPU kernel receives incomplete blake_state (missing last 12 header bytes)
+2. GPU generates indices based on this incomplete state
+3. CPU verify_equihash_full processes FULL 140-byte header
+4. CPU and GPU use different blake_state → different hashes generated
+5. Wagner tree XOR check fails at Round 1 ("XOR byte 0 is non-zero")
+6. 100% of GPU solutions rejected
+
+**Why This Matters**:
+- GPU indices are "valid" according to GPU's incomplete header processing
+- But CPU verification treats it as invalid because CPU processed full header
+- Pool rejection of error 20 is exactly this - solutions built on wrong hash base
+
+**Fix Required**:
+- Process remaining 12 bytes before sending blake_state to GPU
+- Need to decide: process remaining 12 as new block, or extract after full processing?
+
+## Attempted Fix (Rev 1) - REVERTED
+
+**Attempt**: Process remaining 12 bytes in solve_equihash before sending blake_state to GPU
+
+**Reasoning**: If GPU receives incomplete blake_state, pass complete blake_state instead
+
+**Implementation**: 
+```c
+zcash_blake2b_update(&blake, header, 128, 0);
+zcash_blake2b_update(&blake, remaining_12_bytes, 128, 0);  // Complete the header
+buf_blake_st = send(blake.h);  // Now passes complete state
+```
+
+**Result**: ❌ Still 0 valid solutions
+
+**Why Reverted**: GPU kernel logic may be completely different from assumed
+- GPU processes blake_state differently than simple state continuation
+- Need to deeply understand GPU kernel_round0 before applying fix
+- Current understanding may be incomplete
+
 ### Files Modified This Session (Phase 2)
 - main.c: 
   - Removed `order_indices()` call from verify_sol() (tested but doesn't help)
