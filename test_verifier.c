@@ -24,55 +24,61 @@ static void eh_genhash(const blake2b_state *ctx, uint32_t idx, uint8_t *hash)
     const uint32_t hashes_per_blake = 512 / PARAM_N;
     const uint32_t hash_bytes = PARAM_N / 8;
     uint8_t full_hash[ZCASH_HASH_LEN];
-    uint32_t g = idx / hashes_per_blake;
-
-    /* Use Tromp's blake2b_update with proper internal buffering */
-    blake2b_update(&state, (uchar *)&g, sizeof(uint32_t));
+    
+    /* Tromp's genhash: convert index to little-endian before hashing */
+    uint32_t leb = htole32(idx / hashes_per_blake);
+    blake2b_update(&state, (uchar *)&leb, sizeof(uint32_t));
     blake2b_final(&state, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
-static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r)
+static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r, int depth_indent)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
     if (r == 0) {
         eh_genhash(ctx, *indices, hash);
+        printf("[r=0] idx=%u hash: %02x%02x%02x%02x%02x%02x\n", *indices, hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]);
         return 1;
     }
 
     uint32_t *indices1 = indices + (1 << (r - 1));
     if (*indices >= *indices1) {
-        printf("FAIL at r=%d: ordering violation indices[0]=%u >= indices[%d]=%u\n",
+        printf("[r=%d] FAIL: ordering violation indices[0]=%u >= indices[%d]=%u\n",
                r, *indices, (1 << (r - 1)), *indices1);
         return 0;
     }
 
     uint8_t hash0[hash_bytes], hash1[hash_bytes];
-    if (!eh_verifyrec(ctx, indices, hash0, r - 1)) {
-        printf("FAIL at r=%d: left subtree failed\n", r);
+    if (!eh_verifyrec(ctx, indices, hash0, r - 1, depth_indent + 1)) {
+        printf("[r=%d] FAIL: left subtree failed\n", r);
         return 0;
     }
-    if (!eh_verifyrec(ctx, indices1, hash1, r - 1)) {
-        printf("FAIL at r=%d: right subtree failed\n", r);
+    if (!eh_verifyrec(ctx, indices1, hash1, r - 1, depth_indent + 1)) {
+        printf("[r=%d] FAIL: right subtree failed\n", r);
         return 0;
     }
 
     for (uint32_t i = 0; i < hash_bytes; i++)
         hash[i] = hash0[i] ^ hash1[i];
 
+    if (r == 1) {
+        printf("[r=1] XOR result: %02x%02x%02x%02x%02x%02x (from %02x%02x%02x ^ %02x%02x%02x)\n",
+               hash[0], hash[1], hash[2], hash[3], hash[4], hash[5],
+               hash0[0], hash0[1], hash0[2], hash1[0], hash1[1], hash1[2]);
+    }
+
     int b = r < PARAM_K ? r * PREFIX : PARAM_N;
     int i;
     for (i = 0; i < b / 8; i++) {
         if (hash[i]) {
-            printf("FAIL at r=%d: XOR byte %d is %02x (expected 00), need %d zero bits\n",
+            printf("[r=%d] FAIL: XOR byte %d is %02x (expected 00), need %d zero bits\n",
                    r, i, hash[i], b);
             return 0;
         }
     }
     if ((b % 8) && (hash[i] >> (8 - (b % 8)))) {
-        printf("FAIL at r=%d: XOR partial byte %d has non-zero high bits: %02x, need %d zero bits\n",
-               r, i, hash[i], b);
+        printf("[r=%d] FAIL: nonzero partial byte %d: %02x\n", r, i, hash[i]);
         return 0;
     }
     return 1;
@@ -102,7 +108,7 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
     blake2b_init_param(&ctx, &P);
     blake2b_update(&ctx, header, ZCASH_BLOCK_HEADER_LEN);
 
-    return eh_verifyrec(&ctx, indices, hash, PARAM_K);
+    return eh_verifyrec(&ctx, indices, hash, PARAM_K, 0);
 }
 
 int main(int argc, char **argv) {
