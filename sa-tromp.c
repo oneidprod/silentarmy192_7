@@ -229,7 +229,13 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
     uint32_t num_hashes = nonces * 2;
     for (uint32_t idx = 0; idx < num_hashes; idx++) {
         blake = blake_base;
-        uint32_t g = (nonce_offset * 2) + (idx / 2);
+        uint32_t g = nonce_offset + (idx / 2);
+        
+        // Debug: print first and last few nonces
+        if (idx < 4 || idx >= num_hashes - 2) {
+            printf("  [DEBUG] idx=%u -> nonce g=%u\n", idx, g);
+        }
+        
         zcash_blake2b_update(&blake, (uint8_t*)&g, sizeof(g), 0);
         
         uint8_t blakehash[48];
@@ -256,6 +262,10 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
     }
     generate_round0_hashes(round0_hashes, nonces, header, nonce_offset);
     
+    // Debug: print first hash bytes
+    printf("  [DEBUG] First hash bytes: %02x %02x %02x %02x\n", 
+           round0_hashes[0], round0_hashes[1], round0_hashes[2], round0_hashes[3]);
+    
     // Allocate GPU buffers
     cl_int err;
     size_t tree_size = NBUCKETS * NSLOTS;
@@ -263,6 +273,7 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
     cl_mem buf_round0 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                        num_hashes * HASHBYTES_STAGE0, round0_hashes, &err);
     check_error(err, "buf_round0");
+    clFinish(queue);  // Ensure buffer upload completes
     
     cl_mem buf_tree1 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage1_slot_t), NULL, &err);
     check_error(err, "buf_tree1");
