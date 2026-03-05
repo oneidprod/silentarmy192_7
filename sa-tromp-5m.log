@@ -1,0 +1,735 @@
+╔═══════════════════════════════════════════════════════════╗
+║         sa-tromp: Equihash 192,7 GPU Miner              ║
+║    Local verification before pool integration testing    ║
+╚═══════════════════════════════════════════════════════════╝
+
+Configuration:
+  Algorithm: Equihash 192,7 (Tromp bucket-based)
+  Collision detection: 24-bit per stage (NBUCKETS=1M, NSLOTS=32)
+  Total nonces: 5000000 (10000000 hashes)
+  Memory: ~5.8GB GPU allocation
+
+Initializing OpenCL...
+✓ OpenCL ready
+
+Mining with test header: "test_block_header_data_192_7"
+
+Processing in 27 batch(es) of up to 189000 nonces each
+(Beignet driver limitation: max ~1.1M nonces per batch)
+
+═══ Batch 1/27: nonces 0-188999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 0 ---
+  [DEBUG] idx=0 -> nonce g=0
+  [DEBUG] idx=1 -> nonce g=0
+  [DEBUG] idx=2 -> nonce g=1
+  [DEBUG] idx=3 -> nonce g=1
+  [DEBUG] idx=377998 -> nonce g=188999
+  [DEBUG] idx=377999 -> nonce g=188999
+  [DEBUG] First 10 hash bucket IDs: 367152 346055 173942 235404 190920 596274 596555 1033618 105172 947161 
+  [DEBUG] First hash bytes: 59 a3 0a 6f
+Running GPU stages 1-7...
+  Stage 1: 16914 collisions in 10152 buckets (max 12 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 2=1 colls, bucket 5=1 colls, bucket 6=4 colls, bucket 7=2 colls, bucket 8=2 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 8568 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2258 collisions
+  Stage 4: 143 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 2/27: nonces 189000-377999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 189000 ---
+  [DEBUG] idx=0 -> nonce g=189000
+  [DEBUG] idx=1 -> nonce g=189000
+  [DEBUG] idx=2 -> nonce g=189001
+  [DEBUG] idx=3 -> nonce g=189001
+  [DEBUG] idx=377998 -> nonce g=377999
+  [DEBUG] idx=377999 -> nonce g=377999
+  [DEBUG] First 10 hash bucket IDs: 806595 999455 194096 454882 485755 512424 250959 600559 494367 688310 
+  [DEBUG] First hash bytes: c4 ec 30 b9
+Running GPU stages 1-7...
+  Stage 1: 16712 collisions in 10050 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=4 colls, bucket 1=1 colls, bucket 2=1 colls, bucket 3=3 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000005 hash=007e6e4f
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 3/27: nonces 378000-566999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 378000 ---
+  [DEBUG] idx=0 -> nonce g=378000
+  [DEBUG] idx=1 -> nonce g=378000
+  [DEBUG] idx=2 -> nonce g=378001
+  [DEBUG] idx=3 -> nonce g=378001
+  [DEBUG] idx=377998 -> nonce g=566999
+  [DEBUG] idx=377999 -> nonce g=566999
+  [DEBUG] First 10 hash bucket IDs: 1007770 56186 45455 36626 726489 681854 260751 297372 777063 157013 
+  [DEBUG] First hash bytes: f6 09 a3 f5
+Running GPU stages 1-7...
+  Stage 1: 16891 collisions in 10202 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=4 colls, bucket 3=2 colls, bucket 4=1 colls, bucket 5=1 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000108 hash=00108565
+  Stage 2: 8846 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2406 collisions
+  Stage 4: 174 collisions
+  Stage 5: 1 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 4/27: nonces 567000-755999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 567000 ---
+  [DEBUG] idx=0 -> nonce g=567000
+  [DEBUG] idx=1 -> nonce g=567000
+  [DEBUG] idx=2 -> nonce g=567001
+  [DEBUG] idx=3 -> nonce g=567001
+  [DEBUG] idx=377998 -> nonce g=755999
+  [DEBUG] idx=377999 -> nonce g=755999
+  [DEBUG] First 10 hash bucket IDs: 48173 593725 152795 442321 120502 905021 809305 851428 695197 192928 
+  [DEBUG] First hash bytes: 0b c2 dc 8b
+Running GPU stages 1-7...
+  Stage 1: 17184 collisions in 10370 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=2 colls, bucket 2=3 colls, bucket 4=2 colls, bucket 5=1 colls, bucket 7=1 colls, 
+  [DEBUG] First collision attr=0x000000ca hash=000d714d
+  Stage 2: 8997 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2443 collisions
+  Stage 4: 182 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 5/27: nonces 756000-944999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 756000 ---
+  [DEBUG] idx=0 -> nonce g=756000
+  [DEBUG] idx=1 -> nonce g=756000
+  [DEBUG] idx=2 -> nonce g=756001
+  [DEBUG] idx=3 -> nonce g=756001
+  [DEBUG] idx=377998 -> nonce g=944999
+  [DEBUG] idx=377999 -> nonce g=944999
+  [DEBUG] First 10 hash bucket IDs: 554530 457511 166172 383341 844111 425670 320087 173769 379412 90733 
+  [DEBUG] First hash bytes: 87 62 25 22
+Running GPU stages 1-7...
+  Stage 1: 16886 collisions in 10186 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=2 colls, bucket 1=1 colls, bucket 2=2 colls, bucket 3=3 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000016 hash=00a44877
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 6/27: nonces 945000-1133999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 945000 ---
+  [DEBUG] idx=0 -> nonce g=945000
+  [DEBUG] idx=1 -> nonce g=945000
+  [DEBUG] idx=2 -> nonce g=945001
+  [DEBUG] idx=3 -> nonce g=945001
+  [DEBUG] idx=377998 -> nonce g=1133999
+  [DEBUG] idx=377999 -> nonce g=1133999
+  [DEBUG] First 10 hash bucket IDs: 858462 923632 535718 257044 101018 149466 449178 495973 67006 833666 
+  [DEBUG] First hash bytes: d1 95 ee 9b
+Running GPU stages 1-7...
+  Stage 1: 17145 collisions in 10341 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=1 colls, bucket 3=1 colls, bucket 8=1 colls, bucket 9=2 colls, bucket 10=1 colls, 
+  [DEBUG] First collision attr=0x00000155 hash=004b6cad
+  Stage 2: 8909 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2398 collisions
+  Stage 4: 172 collisions
+  Stage 5: 2 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.69 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 7/27: nonces 1134000-1322999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 1134000 ---
+  [DEBUG] idx=0 -> nonce g=1134000
+  [DEBUG] idx=1 -> nonce g=1134000
+  [DEBUG] idx=2 -> nonce g=1134001
+  [DEBUG] idx=3 -> nonce g=1134001
+  [DEBUG] idx=377998 -> nonce g=1322999
+  [DEBUG] idx=377999 -> nonce g=1322999
+  [DEBUG] First 10 hash bucket IDs: 367046 642948 28203 803557 579922 802997 354176 289488 94360 536579 
+  [DEBUG] First hash bytes: 59 9c 6a 46
+Running GPU stages 1-7...
+  Stage 1: 16979 collisions in 10259 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 2=1 colls, bucket 3=2 colls, bucket 5=1 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 8778 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2385 collisions
+  Stage 4: 184 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.69 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 8/27: nonces 1323000-1511999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 1323000 ---
+  [DEBUG] idx=0 -> nonce g=1323000
+  [DEBUG] idx=1 -> nonce g=1323000
+  [DEBUG] idx=2 -> nonce g=1323001
+  [DEBUG] idx=3 -> nonce g=1323001
+  [DEBUG] idx=377998 -> nonce g=1511999
+  [DEBUG] idx=377999 -> nonce g=1511999
+  [DEBUG] First 10 hash bucket IDs: 506719 574240 271673 76857 52955 754825 954376 558368 671765 757748 
+  [DEBUG] First hash bytes: 7b b5 fc 52
+Running GPU stages 1-7...
+  Stage 1: 16789 collisions in 9988 buckets (max 10 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=2 colls, bucket 3=1 colls, bucket 4=1 colls, bucket 5=1 colls, bucket 9=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 9/27: nonces 1512000-1700999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 1512000 ---
+  [DEBUG] idx=0 -> nonce g=1512000
+  [DEBUG] idx=1 -> nonce g=1512000
+  [DEBUG] idx=2 -> nonce g=1512001
+  [DEBUG] idx=3 -> nonce g=1512001
+  [DEBUG] idx=377998 -> nonce g=1700999
+  [DEBUG] idx=377999 -> nonce g=1700999
+  [DEBUG] First 10 hash bucket IDs: 1001726 199745 256741 722430 187178 750592 938557 586967 587714 179235 
+  [DEBUG] First hash bytes: f4 8f e7 37
+Running GPU stages 1-7...
+  Stage 1: 17077 collisions in 10279 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=1 colls, bucket 2=2 colls, bucket 3=2 colls, bucket 4=2 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000105 hash=00032af6
+  Stage 2: 8920 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2385 collisions
+  Stage 4: 174 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.69 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 10/27: nonces 1701000-1889999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 1701000 ---
+  [DEBUG] idx=0 -> nonce g=1701000
+  [DEBUG] idx=1 -> nonce g=1701000
+  [DEBUG] idx=2 -> nonce g=1701001
+  [DEBUG] idx=3 -> nonce g=1701001
+  [DEBUG] idx=377998 -> nonce g=1889999
+  [DEBUG] idx=377999 -> nonce g=1889999
+  [DEBUG] First 10 hash bucket IDs: 313055 70581 537535 328354 544530 1023735 718309 376493 212156 148871 
+  [DEBUG] First hash bytes: 4c 6d ff ec
+Running GPU stages 1-7...
+  Stage 1: 16933 collisions in 10212 buckets (max 10 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=1 colls, bucket 1=1 colls, bucket 2=1 colls, bucket 3=1 colls, bucket 4=1 colls, 
+  [DEBUG] First collision attr=0x000000c7 hash=004c1390
+  Stage 2: 8526 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2201 collisions
+  Stage 4: 157 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.69 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 11/27: nonces 1890000-2078999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 1890000 ---
+  [DEBUG] idx=0 -> nonce g=1890000
+  [DEBUG] idx=1 -> nonce g=1890000
+  [DEBUG] idx=2 -> nonce g=1890001
+  [DEBUG] idx=3 -> nonce g=1890001
+  [DEBUG] idx=377998 -> nonce g=2078999
+  [DEBUG] idx=377999 -> nonce g=2078999
+  [DEBUG] First 10 hash bucket IDs: 378168 155718 260136 426214 647785 364406 658407 823571 765781 558434 
+  [DEBUG] First hash bytes: 5c 53 81 a3
+Running GPU stages 1-7...
+  Stage 1: 16954 collisions in 10142 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 2=1 colls, bucket 3=1 colls, bucket 4=1 colls, bucket 5=1 colls, bucket 9=2 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 12/27: nonces 2079000-2267999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 2079000 ---
+  [DEBUG] idx=0 -> nonce g=2079000
+  [DEBUG] idx=1 -> nonce g=2079000
+  [DEBUG] idx=2 -> nonce g=2079001
+  [DEBUG] idx=3 -> nonce g=2079001
+  [DEBUG] idx=377998 -> nonce g=2267999
+  [DEBUG] idx=377999 -> nonce g=2267999
+  [DEBUG] First 10 hash bucket IDs: 459674 609433 218672 869433 554695 653643 624375 504245 367029 687794 
+  [DEBUG] First hash bytes: 70 39 a1 21
+Running GPU stages 1-7...
+  Stage 1: 17176 collisions in 10265 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=2 colls, bucket 2=2 colls, bucket 4=1 colls, bucket 5=1 colls, bucket 7=1 colls, 
+  [DEBUG] First collision attr=0x000000cc hash=008356e9
+  Stage 2: 9079 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2521 collisions
+  Stage 4: 196 collisions
+  Stage 5: 3 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.70 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 13/27: nonces 2268000-2456999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 2268000 ---
+  [DEBUG] idx=0 -> nonce g=2268000
+  [DEBUG] idx=1 -> nonce g=2268000
+  [DEBUG] idx=2 -> nonce g=2268001
+  [DEBUG] idx=3 -> nonce g=2268001
+  [DEBUG] idx=377998 -> nonce g=2456999
+  [DEBUG] idx=377999 -> nonce g=2456999
+  [DEBUG] First 10 hash bucket IDs: 665510 1011965 597132 732746 970463 621215 92365 801684 300411 903711 
+  [DEBUG] First hash bytes: a2 7a 66 ed
+Running GPU stages 1-7...
+  Stage 1: 13978 collisions in 8410 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=5 colls, bucket 4=1 colls, bucket 5=1 colls, bucket 6=2 colls, bucket 8=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.63 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 14/27: nonces 2457000-2645999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 2457000 ---
+  [DEBUG] idx=0 -> nonce g=2457000
+  [DEBUG] idx=1 -> nonce g=2457000
+  [DEBUG] idx=2 -> nonce g=2457001
+  [DEBUG] idx=3 -> nonce g=2457001
+  [DEBUG] idx=377998 -> nonce g=2645999
+  [DEBUG] idx=377999 -> nonce g=2645999
+  [DEBUG] First 10 hash bucket IDs: 892508 871069 423512 40871 861535 774064 831691 515612 910179 712090 
+  [DEBUG] First hash bytes: d9 e5 ce 4d
+Running GPU stages 1-7...
+  Stage 1: 16983 collisions in 10213 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 3=2 colls, bucket 4=2 colls, bucket 7=2 colls, bucket 8=1 colls, bucket 9=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 9068 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2482 collisions
+  Stage 4: 202 collisions
+  Stage 5: 1 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 15/27: nonces 2646000-2834999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 2646000 ---
+  [DEBUG] idx=0 -> nonce g=2646000
+  [DEBUG] idx=1 -> nonce g=2646000
+  [DEBUG] idx=2 -> nonce g=2646001
+  [DEBUG] idx=3 -> nonce g=2646001
+  [DEBUG] idx=377998 -> nonce g=2834999
+  [DEBUG] idx=377999 -> nonce g=2834999
+  [DEBUG] First 10 hash bucket IDs: 1017202 439831 1014488 914113 539815 84980 148824 889763 62446 509957 
+  [DEBUG] First hash bytes: f8 57 25 8c
+Running GPU stages 1-7...
+  Stage 1: 16877 collisions in 10167 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=2 colls, bucket 1=1 colls, bucket 2=1 colls, bucket 3=1 colls, bucket 7=2 colls, 
+  [DEBUG] First collision attr=0x000003d1 hash=007478e3
+  Stage 2: 8729 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2240 collisions
+  Stage 4: 175 collisions
+  Stage 5: 2 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.66 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 16/27: nonces 2835000-3023999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 2835000 ---
+  [DEBUG] idx=0 -> nonce g=2835000
+  [DEBUG] idx=1 -> nonce g=2835000
+  [DEBUG] idx=2 -> nonce g=2835001
+  [DEBUG] idx=3 -> nonce g=2835001
+  [DEBUG] idx=377998 -> nonce g=3023999
+  [DEBUG] idx=377999 -> nonce g=3023999
+  [DEBUG] First 10 hash bucket IDs: 935488 126307 125762 675824 200942 804886 263919 841713 197117 926009 
+  [DEBUG] First hash bytes: e4 64 00 0e
+Running GPU stages 1-7...
+  Stage 1: 16877 collisions in 10164 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 2=1 colls, bucket 3=1 colls, bucket 4=1 colls, bucket 5=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 17/27: nonces 3024000-3212999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3024000 ---
+  [DEBUG] idx=0 -> nonce g=3024000
+  [DEBUG] idx=1 -> nonce g=3024000
+  [DEBUG] idx=2 -> nonce g=3024001
+  [DEBUG] idx=3 -> nonce g=3024001
+  [DEBUG] idx=377998 -> nonce g=3212999
+  [DEBUG] idx=377999 -> nonce g=3212999
+  [DEBUG] First 10 hash bucket IDs: 211946 162110 754261 727113 1003451 348680 636353 579760 527304 315415 
+  [DEBUG] First hash bytes: 33 be a5 91
+Running GPU stages 1-7...
+  Stage 1: 16988 collisions in 10273 buckets (max 11 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=1 colls, bucket 1=2 colls, bucket 2=1 colls, bucket 5=2 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000355 hash=00f4b3f3
+  Stage 2: 8819 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2302 collisions
+  Stage 4: 153 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.68 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 18/27: nonces 3213000-3401999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3213000 ---
+  [DEBUG] idx=0 -> nonce g=3213000
+  [DEBUG] idx=1 -> nonce g=3213000
+  [DEBUG] idx=2 -> nonce g=3213001
+  [DEBUG] idx=3 -> nonce g=3213001
+  [DEBUG] idx=377998 -> nonce g=3401999
+  [DEBUG] idx=377999 -> nonce g=3401999
+  [DEBUG] First 10 hash bucket IDs: 116715 354985 45421 825759 515708 706692 315269 317872 20016 58905 
+  [DEBUG] First hash bytes: 1c 7e b8 e3
+Running GPU stages 1-7...
+  Stage 1: 16897 collisions in 10131 buckets (max 13 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=3 colls, bucket 1=1 colls, bucket 4=2 colls, bucket 5=1 colls, bucket 7=1 colls, 
+  [DEBUG] First collision attr=0x00000004 hash=00d3edb8
+  Stage 2: 8764 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2352 collisions
+  Stage 4: 171 collisions
+  Stage 5: 1 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.68 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 19/27: nonces 3402000-3590999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3402000 ---
+  [DEBUG] idx=0 -> nonce g=3402000
+  [DEBUG] idx=1 -> nonce g=3402000
+  [DEBUG] idx=2 -> nonce g=3402001
+  [DEBUG] idx=3 -> nonce g=3402001
+  [DEBUG] idx=377998 -> nonce g=3590999
+  [DEBUG] idx=377999 -> nonce g=3590999
+  [DEBUG] First 10 hash bucket IDs: 473945 276655 514601 694925 976771 653709 891935 153654 298061 518128 
+  [DEBUG] First hash bytes: 73 b5 9f 3f
+Running GPU stages 1-7...
+  Stage 1: 16730 collisions in 10058 buckets (max 10 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=2 colls, bucket 2=1 colls, bucket 5=1 colls, bucket 8=1 colls, bucket 10=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 20/27: nonces 3591000-3779999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3591000 ---
+  [DEBUG] idx=0 -> nonce g=3591000
+  [DEBUG] idx=1 -> nonce g=3591000
+  [DEBUG] idx=2 -> nonce g=3591001
+  [DEBUG] idx=3 -> nonce g=3591001
+  [DEBUG] idx=377998 -> nonce g=3779999
+  [DEBUG] idx=377999 -> nonce g=3779999
+  [DEBUG] First 10 hash bucket IDs: 6405 663907 181008 42556 642294 314294 228730 702054 377514 778561 
+  [DEBUG] First hash bytes: 01 90 50 c4
+Running GPU stages 1-7...
+  Stage 1: 17127 collisions in 10208 buckets (max 8 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 2=2 colls, bucket 5=3 colls, bucket 7=2 colls, bucket 8=2 colls, bucket 9=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 8927 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2417 collisions
+  Stage 4: 167 collisions
+  Stage 5: 2 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.70 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 21/27: nonces 3780000-3968999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3780000 ---
+  [DEBUG] idx=0 -> nonce g=3780000
+  [DEBUG] idx=1 -> nonce g=3780000
+  [DEBUG] idx=2 -> nonce g=3780001
+  [DEBUG] idx=3 -> nonce g=3780001
+  [DEBUG] idx=377998 -> nonce g=3968999
+  [DEBUG] idx=377999 -> nonce g=3968999
+  [DEBUG] First 10 hash bucket IDs: 641505 104595 348011 884171 602311 853874 789820 378495 783976 146893 
+  [DEBUG] First hash bytes: 9c 9e 1f 97
+Running GPU stages 1-7...
+  Stage 1: 16787 collisions in 10197 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 2=4 colls, bucket 4=2 colls, bucket 5=1 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 8590 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2308 collisions
+  Stage 4: 184 collisions
+  Stage 5: 1 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 22/27: nonces 3969000-4157999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 3969000 ---
+  [DEBUG] idx=0 -> nonce g=3969000
+  [DEBUG] idx=1 -> nonce g=3969000
+  [DEBUG] idx=2 -> nonce g=3969001
+  [DEBUG] idx=3 -> nonce g=3969001
+  [DEBUG] idx=377998 -> nonce g=4157999
+  [DEBUG] idx=377999 -> nonce g=4157999
+  [DEBUG] First 10 hash bucket IDs: 851418 645819 785389 121201 308962 144107 41384 526296 796421 681874 
+  [DEBUG] First hash bytes: cf dd a6 d8
+Running GPU stages 1-7...
+  Stage 1: 16746 collisions in 10029 buckets (max 8 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=3 colls, bucket 3=3 colls, bucket 4=1 colls, bucket 5=2 colls, bucket 6=1 colls, 
+  [DEBUG] First collision attr=0x0000001b hash=00eb7efb
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 23/27: nonces 4158000-4346999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 4158000 ---
+  [DEBUG] idx=0 -> nonce g=4158000
+  [DEBUG] idx=1 -> nonce g=4158000
+  [DEBUG] idx=2 -> nonce g=4158001
+  [DEBUG] idx=3 -> nonce g=4158001
+  [DEBUG] idx=377998 -> nonce g=4346999
+  [DEBUG] idx=377999 -> nonce g=4346999
+  [DEBUG] First 10 hash bucket IDs: 399774 964002 499402 75785 346940 145937 192024 1008623 774984 507459 
+  [DEBUG] First hash bytes: 61 99 e2 aa
+Running GPU stages 1-7...
+  Stage 1: 16856 collisions in 10131 buckets (max 8 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 0=1 colls, bucket 1=1 colls, bucket 2=3 colls, bucket 3=3 colls, bucket 4=2 colls, 
+  [DEBUG] First collision attr=0x0000024f hash=00c96b46
+  Stage 2: 8676 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2290 collisions
+  Stage 4: 156 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 24/27: nonces 4347000-4535999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 4347000 ---
+  [DEBUG] idx=0 -> nonce g=4347000
+  [DEBUG] idx=1 -> nonce g=4347000
+  [DEBUG] idx=2 -> nonce g=4347001
+  [DEBUG] idx=3 -> nonce g=4347001
+  [DEBUG] idx=377998 -> nonce g=4535999
+  [DEBUG] idx=377999 -> nonce g=4535999
+  [DEBUG] First 10 hash bucket IDs: 987287 534937 814276 675999 398882 339654 232955 391802 604720 394238 
+  [DEBUG] First hash bytes: f1 09 7e 41
+Running GPU stages 1-7...
+  Stage 1: 17069 collisions in 10212 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 5=2 colls, bucket 6=2 colls, bucket 7=1 colls, bucket 8=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 8979 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2453 collisions
+  Stage 4: 171 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.68 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 25/27: nonces 4536000-4724999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 4536000 ---
+  [DEBUG] idx=0 -> nonce g=4536000
+  [DEBUG] idx=1 -> nonce g=4536000
+  [DEBUG] idx=2 -> nonce g=4536001
+  [DEBUG] idx=3 -> nonce g=4536001
+  [DEBUG] idx=377998 -> nonce g=4724999
+  [DEBUG] idx=377999 -> nonce g=4724999
+  [DEBUG] First 10 hash bucket IDs: 874339 1007852 697197 219718 779485 234277 401721 543473 890248 397157 
+  [DEBUG] First hash bytes: d5 76 39 1a
+Running GPU stages 1-7...
+  Stage 1: 13683 collisions in 8287 buckets (max 9 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 2=1 colls, bucket 4=2 colls, bucket 5=1 colls, bucket 6=2 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 0 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.60 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 26/27: nonces 4725000-4913999 (189000 nonces) ═══
+
+--- Mining batch: 189000 nonces (378000 hashes) starting at nonce 4725000 ---
+  [DEBUG] idx=0 -> nonce g=4725000
+  [DEBUG] idx=1 -> nonce g=4725000
+  [DEBUG] idx=2 -> nonce g=4725001
+  [DEBUG] idx=3 -> nonce g=4725001
+  [DEBUG] idx=377998 -> nonce g=4913999
+  [DEBUG] idx=377999 -> nonce g=4913999
+  [DEBUG] First 10 hash bucket IDs: 310989 7470 779229 978360 806314 350302 525351 813940 399644 773117 
+  [DEBUG] First hash bytes: 4b ec dd 59
+Running GPU stages 1-7...
+  Stage 1: 17218 collisions in 10222 buckets (max 10 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 1=1 colls, bucket 3=1 colls, bucket 5=1 colls, bucket 7=1 colls, bucket 8=3 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 9018 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 2532 collisions
+  Stage 4: 196 collisions
+  Stage 5: 1 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.69 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 27/27: nonces 4914000-4999999 (86000 nonces) ═══
+
+--- Mining batch: 86000 nonces (172000 hashes) starting at nonce 4914000 ---
+  [DEBUG] idx=0 -> nonce g=4914000
+  [DEBUG] idx=1 -> nonce g=4914000
+  [DEBUG] idx=2 -> nonce g=4914001
+  [DEBUG] idx=3 -> nonce g=4914001
+  [DEBUG] idx=171998 -> nonce g=4999999
+  [DEBUG] idx=171999 -> nonce g=4999999
+  [DEBUG] First 10 hash bucket IDs: 453204 28686 900165 810232 582164 88039 9508 624461 17996 267619 
+  [DEBUG] First hash bytes: 6e a5 4a 5b
+Running GPU stages 1-7...
+  Stage 1: 3666 collisions in 3162 buckets (max 5 per bucket)
+  [DEBUG] First 5 non-empty buckets: bucket 4=1 colls, bucket 11=1 colls, bucket 16=1 colls, bucket 23=2 colls, bucket 26=1 colls, 
+  [DEBUG] First collision attr=0x00000000 hash=00000000
+  Stage 2: 395 collisions
+  [DEBUG] Stage 2 first 10 bucket_counts: 0 0 0 0 0 0 0 0 0 0 
+  Stage 3: 8 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+╔═══════════════════════════════════════════════════════════╗
+║                    MINING COMPLETE                        ║
+╚═══════════════════════════════════════════════════════════╝
+
+Results:
+  Total nonces processed: 5000000
+  Total mining time: 44.81 seconds
+  Hash rate: 111592.64 Sol/s
+  Valid solutions found: 0
+
+⚠️  No valid solutions found
+   This may indicate an issue with collision detection.
+   Check GPU kernel implementation.
+
