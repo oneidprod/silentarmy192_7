@@ -1132,3 +1132,120 @@ void kernel_sols(__global char *ht0, __global char *ht1, __global sols_t *sols,
 exit1:
     potential_sol(htabs, sols, collisions >> 32, collisions & 0xffffffff);
 }
+
+/*
+** ============================================================================
+** Tromp-Style Stage 1 Collision Detection (Equihash 192,7)
+** ============================================================================
+** 
+** This kernel implements Tromp's bucket-based collision detection approach
+** for the first stage. It replaces the original silentarmy round-based logic
+** with a simpler bucket + slot design that correctly handles 24-bit collisions.
+**
+** Parameters:
+**   NBUCKETS = 2^20 (1M buckets)
+**   NSLOTS_STAGE1 = 96 slots per bucket
+**   BUCKBITS = 20 (top 20 bits select bucket)
+**   RESTBITS = 4 (bottom 4 bits for collision filtering)
+**   DIGITBITS = 24 (total bits per stage)
+**
+** Input: Round 0 hashes (24 bytes each, from kernel_round0)
+** Output: Stage 1 collision trees + slot counters
+*/
+
+#define NBUCKETS_STAGE1 (1<<20)     // 1M buckets
+#define NSLOTS_STAGE1 96             // Slots per bucket  
+#define BUCKBITS 20                  // Bucket selection bits
+#define RESTBITS 4                   // Collision filtering bits (24-20=4)
+#define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
+#define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
+
+// Stage 1 slot structure
+typedef struct {
+    uint attr;                       // Tree attribution: bucketid + slot0 + slot1
+    uchar hash[HASHBYTES_STAGE1];    // Remaining hash bytes (21 bytes)
+} stage1_slot_t;
+
+/**
+ * kernel_stage1_collisions
+ * 
+ * Each work-item processes ONE bucket:
+ * 1. Scan all Round 0 hashes to find hashes belonging to this bucket
+ * 2. Within bucket, find collision pairs (matching 24-bit prefix)
+ * 3. Store collision pairs in Stage 1 tree with XOR'd hash
+ *
+ * Global work size: NBUCKETS_STAGE1 (1M)
+ * Local work size: 1 (simple single-threaded per bucket)
+ */
+__kernel
+void kernel_stage1_collisions(
+    __global uchar *hashes_round0,      // Input: Round 0 hashes (NHASHES * 24 bytes)
+    __global stage1_slot_t *stage1_tree, // Output: Stage 1 collision trees
+    __global uint *stage1_slot_counts,   // Output: Slot counts per bucket
+    uint nhashes)                        // Number of Round 0 hashes to process
+{
+    uint bucketid = get_global_id(0);
+    
+    if (bucketid >= NBUCKETS_STAGE1)
+        return;
+    
+    // Temporary storage for this bucket's hashes
+    __private uint bucket_indices[NSLOTS_STAGE1];
+    __private uchar bucket_restbits[NSLOTS_STAGE1];
+    __private uint bucket_count = 0;
+    
+    // Step 1: Collect all hashes belonging to this bucket
+    for (uint hidx = 0; hidx < nhashes && bucket_count < NSLOTS_STAGE1; hidx++) {
+        __global uchar *hash = hashes_round0 + hidx * HASHBYTES_STAGE0;
+        
+        // Extract first 24 bits (3 bytes) for bucketing
+        // Bits 0-19: bucket ID
+        // Bits 20-23: RESTBITS for collision filtering
+        uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
+        uint hash_bucket = bits24 >> RESTBITS;  // Top 20 bits
+        uint hash_rest = bits24 & 0xF;           // Bottom 4 bits
+        
+        if (hash_bucket == bucketid) {
+            bucket_indices[bucket_count] = hidx;
+            bucket_restbits[bucket_count] = hash_rest;
+            bucket_count++;
+        }
+    }
+    
+    // Step 2: Find collisions within bucket (pairs with matching RESTBITS)
+    uint collision_count = 0;
+    __global stage1_slot_t *output_base = stage1_tree + bucketid * NSLOTS_STAGE1;
+    
+    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
+        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
+            // Check if RESTBITS match (indicates 24-bit collision)
+            if (bucket_restbits[i] != bucket_restbits[j])
+                continue;
+            
+            // Found collision! Get the two hashes
+            uint idx0 = bucket_indices[i];
+            uint idx1 = bucket_indices[j];
+            __global uchar *hash0 = hashes_round0 + idx0 * HASHBYTES_STAGE0;
+            __global uchar *hash1 = hashes_round0 + idx1 * HASHBYTES_STAGE0;
+            
+            // Store collision in output
+            __global stage1_slot_t *slot = &output_base[collision_count];
+            
+            // Encode tree attribution: bucketid (20 bits) | slot0 (6 bits) | slot1 (6 bits)
+            // For Stage 1, slot0=idx0 and slot1=idx1 (original hash indices)
+            slot->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            
+            // XOR the remaining hash bytes (skip first 3 bytes used for bucketing)
+            // Store from hash byte 2 onwards (include the lower 4 bits of byte 2)
+            for (uint b = 0; b < HASHBYTES_STAGE1; b++) {
+                slot->hash[b] = hash0[b + 2] ^ hash1[b + 2];
+            }
+            
+            collision_count++;
+        }
+    }
+    
+    // Store collision count for this bucket
+    stage1_slot_counts[bucketid] = collision_count;
+}
+

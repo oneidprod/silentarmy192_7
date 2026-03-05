@@ -8,3 +8,14 @@ _temp_*
 *.tmp
 *.pyc
 tags
+
+# Session handoff/reference docs
+/REFERENCE_MAP.md
+/CLAUDE_SONNET_4.5.md
+/GPT-*.md
+/OPENCL_REWRITE_PLAN.md
+
+# Debug artifacts
+row_*.bin
+extraction_dbg_*.bin
+snapshots_*.bin

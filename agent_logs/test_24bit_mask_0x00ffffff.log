@@ -1,0 +1,15 @@
+Solving default all-zero 140-byte header
+Found 2 OpenCL platform(s)
+Using GPU device ID 0
+Building program
+Hash tables will use 3221.2 MB
+Running...
+
+Solving nonce 0000000000000000000000000000000000000000000000000000000000000000
+Round 0
+init_ht: enqueue global=262144 local=256
+Dropped: 0 (coll) 8247 (stor)
+Round 1
+init_ht: enqueue global=262144 local=256
+Beignet: "Out of shared local memory 74248."
+clEnqueueNDRangeKernel (-5)
