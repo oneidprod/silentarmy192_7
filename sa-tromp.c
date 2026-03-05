@@ -517,6 +517,12 @@ int main(int argc, char *argv[]) {
         if (solutions > 0) {
             printf("✅ Found %d valid solution(s) in this batch!\n", solutions);
         }
+        
+        // Reinitialize OpenCL between batches to work around Beignet driver bug
+        if (batch < num_batches - 1) {
+            cleanup_opencl();
+            init_opencl();
+        }
     }
     
     clock_t overall_end = clock();
