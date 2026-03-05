@@ -28,11 +28,11 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 4
+#define RESTBITS 10
 #define BUCKBITS (24-RESTBITS)
-#define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 32
-#define SLOTBITS 5    // log2(32)
+#define NBUCKETS (1<<BUCKBITS)  // 16K buckets
+#define NSLOTS 96
+#define SLOTBITS 7    // log2(32)
 #define HASHBYTES_STAGE0 24
 
 /* Define htole32 for little-endian conversion if not available */
@@ -400,6 +400,15 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
         if (show_progress) {
             printf("  Stage %d: %u %s\n", stage + 1, total, 
                    stage == 6 ? "solution candidates" : "collisions");
+            
+            // Debug Stage 2 bucket collection
+            if (stage == 1) {
+                printf("  [DEBUG] Stage 2 first 10 bucket_counts: ");
+                for (int i = 0; i < 10; i++) {
+                    printf("%u ", slot_counts[NBUCKETS - 100 + i]);
+                }
+                printf("\n");
+            }
         }
     }
     

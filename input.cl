@@ -1153,10 +1153,10 @@ exit1:
 ** Output: Stage 1 collision trees + slot counters
 */
 
-#define RESTBITS 4                   // Collision filtering bits
-#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 20  
-#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 1M buckets (2^20)
-#define NSLOTS_STAGE1 32              // Slots per bucket
+#define RESTBITS 10                  // Collision filtering bits
+#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 14
+#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 16K buckets (2^14)
+#define NSLOTS_STAGE1 96              // Slots per bucket
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
 #define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
 
@@ -1353,9 +1353,9 @@ void kernel_stage2_collisions(
     
     stage2_slot_counts[bucketid] = collision_count;
     
-    // Debug: first bucket outputs bucket_count
-    if (bucketid == 0 || bucketid == 1) {
-        stage2_slot_counts[bucketid + NBUCKETS_STAGE1] = bucket_count;  // Store in unused space
+    // Debug: Store bucket_count in high buckets to read back
+    if (bucketid < 10) {
+        stage2_slot_counts[NBUCKETS_STAGE1 - 100 + bucketid] = bucket_count;
     }
 }
 
