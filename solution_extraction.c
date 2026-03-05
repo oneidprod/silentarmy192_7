@@ -13,8 +13,8 @@
 #define PARAM_K 7
 #define PROOFSIZE (1 << PARAM_K)  // 128 indices
 #define NBUCKETS (1<<20)
-#define NSLOTS 96
-#define SLOTBITS 6  // log2(96) rounded up
+#define NSLOTS 32  // Reduced from 96 for memory optimization
+#define SLOTBITS 5  // log2(32)
 
 // Stage slot structures (must match GPU kernels)
 typedef struct { uint32_t attr; unsigned char hash[21]; } stage1_slot_t;

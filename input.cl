@@ -1154,7 +1154,7 @@ exit1:
 */
 
 #define NBUCKETS_STAGE1 (1<<20)     // 1M buckets
-#define NSLOTS_STAGE1 96             // Slots per bucket  
+#define NSLOTS_STAGE1 32             // Slots per bucket (reduced from 96 for memory optimization)
 #define BUCKBITS 20                  // Bucket selection bits
 #define RESTBITS 4                   // Collision filtering bits (24-20=4)
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)

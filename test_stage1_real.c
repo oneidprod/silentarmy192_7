@@ -16,7 +16,7 @@
 #define ZCASH_BLOCK_HEADER_LEN 140
 
 #define NBUCKETS_STAGE1 (1<<20)
-#define NSLOTS_STAGE1 96
+#define NSLOTS_STAGE1 32
 #define HASHBYTES_STAGE0 24
 
 // Stage 1 slot structure (matches kernel)

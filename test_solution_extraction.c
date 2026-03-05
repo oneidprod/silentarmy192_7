@@ -16,7 +16,7 @@
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
 #define NBUCKETS (1<<20)
-#define NSLOTS 96
+#define NSLOTS 32
 #define HASHBYTES_STAGE0 24
 
 // OpenCL setup (simplified from test_all_stages.c)
