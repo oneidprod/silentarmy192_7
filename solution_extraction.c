@@ -74,10 +74,13 @@ static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
 // Extract solution indices recursively (even stages - read from trees1, recurse to listindices1)
 static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices) {
     if (r == 0) {
-        // Base case: attr contains two packed hash indices (Stage 1 format)
-        // Upper 16 bits = first hash index, Lower 16 bits = second hash index
-        indices[0] = attr >> 16;
-        indices[1] = attr & 0xFFFF;
+        // Base case: attr contains 20-bit idx0 + 12-bit delta (Stage 1 format)
+        // Upper 20 bits: idx0, Lower 12 bits: (idx1-idx0) & 0xFFF
+        uint32_t idx0 = attr >> 12;
+        uint32_t delta = attr & 0xFFF;
+        uint32_t idx1 = idx0 + delta;
+        indices[0] = idx0;
+        indices[1] = idx1;
         return;
     }
     
