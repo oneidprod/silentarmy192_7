@@ -36,17 +36,15 @@ typedef struct {
     stage7_slot_t *trees1_stage7;  // Stage 7 output (candidates)
 } tree_store_t;
 
-// Decode tree attribution (matches GPU encoding)
-static inline uint32_t tree_bucketid(uint32_t attr) {
+// Decode tree attribution - all stages use 20-bit idx0 + 12-bit delta format
+static inline uint32_t tree_idx0(uint32_t attr) {
     return attr >> 12;
 }
 
-static inline uint32_t tree_slotid0(uint32_t attr) {
-    return (attr >> 6) & 0x3F;
-}
-
-static inline uint32_t tree_slotid1(uint32_t attr) {
-    return attr & 0x3F;
+static inline uint32_t tree_idx1(uint32_t attr) {
+    uint32_t idx0 = attr >> 12;
+    uint32_t delta = attr & 0xFFF;
+    return idx0 + delta;
 }
 
 // Compare function for qsort
@@ -84,30 +82,26 @@ static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
         return;
     }
     
-    uint32_t bucketid = tree_bucketid(attr);
-    uint32_t slot0 = tree_slotid0(attr);
-    uint32_t slot1 = tree_slotid1(attr);
+    uint32_t parent0 = tree_idx0(attr);
+    uint32_t parent1 = tree_idx1(attr);
     uint32_t size = 1 << r;
     uint32_t *indices1 = indices + size;
     
-    // Read from the appropriate trees1 stage
+    // Read from the appropriate trees0 stage
     uint32_t attr0, attr1;
     
     if (r == 2) {
         // Stage 2 output (even) - read from trees0_stage2
-        stage2_slot_t *bucket = &trees->trees0_stage2[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees0_stage2[parent0].attr;
+        attr1 = trees->trees0_stage2[parent1].attr;
     } else if (r == 4) {
         // Stage 4 output (even) - read from trees0_stage4
-        stage4_slot_t *bucket = &trees->trees0_stage4[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees0_stage4[parent0].attr;
+        attr1 = trees->trees0_stage4[parent1].attr;
     } else if (r == 6) {
         // Stage 6 output (even) - read from trees0_stage6
-        stage6_slot_t *bucket = &trees->trees0_stage6[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees0_stage6[parent0].attr;
+        attr1 = trees->trees0_stage6[parent1].attr;
     } else {
         fprintf(stderr, "listindices0: invalid stage r=%u\n", r);
         return;
@@ -121,9 +115,8 @@ static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
 
 // Extract solution indices recursively (odd stages - read from trees0, recurse to listindices0)
 static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices) {
-    uint32_t bucketid = tree_bucketid(attr);
-    uint32_t slot0 = tree_slotid0(attr);
-    uint32_t slot1 = tree_slotid1(attr);
+    uint32_t parent0 = tree_idx0(attr);
+    uint32_t parent1 = tree_idx1(attr);
     uint32_t size = 1 << r;
     uint32_t *indices1 = indices + size;
     
@@ -132,24 +125,20 @@ static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
     
     if (r == 1) {
         // Stage 1 output (odd) - read from trees1_stage1
-        stage1_slot_t *bucket = &trees->trees1_stage1[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees1_stage1[parent0].attr;
+        attr1 = trees->trees1_stage1[parent1].attr;
     } else if (r == 3) {
         // Stage 3 output (odd) - read from trees1_stage3
-        stage3_slot_t *bucket = &trees->trees1_stage3[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees1_stage3[parent0].attr;
+        attr1 = trees->trees1_stage3[parent1].attr;
     } else if (r == 5) {
         // Stage 5 output (odd) - read from trees1_stage5
-        stage5_slot_t *bucket = &trees->trees1_stage5[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees1_stage5[parent0].attr;
+        attr1 = trees->trees1_stage5[parent1].attr;
     } else if (r == 7) {
         // Stage 7 output (odd) - read from trees1_stage7
-        stage7_slot_t *bucket = &trees->trees1_stage7[bucketid * NSLOTS];
-        attr0 = bucket[slot0].attr;
-        attr1 = bucket[slot1].attr;
+        attr0 = trees->trees1_stage7[parent0].attr;
+        attr1 = trees->trees1_stage7[parent1].attr;
     } else {
         fprintf(stderr, "listindices1: invalid stage r=%u\n", r);
         return;

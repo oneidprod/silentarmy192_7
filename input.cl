@@ -1343,7 +1343,10 @@ void kernel_stage2_collisions(
             __global stage1_slot_t *slot1 = &stage1_tree[bucket_indices[j]];
             
             __global stage2_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding like Stage 1
+            // Upper 20 bits: idx0, Lower 12 bits: (idx1 - idx0) & 0xFFF
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             for (uint b = 0; b < HASHBYTES_STAGE2; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
@@ -1410,7 +1413,9 @@ void kernel_stage3_collisions(
             __global stage2_slot_t *slot1 = &stage2_tree[bucket_indices[j]];
             
             __global stage3_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             for (uint b = 0; b < HASHBYTES_STAGE3; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
@@ -1472,7 +1477,9 @@ void kernel_stage4_collisions(
             __global stage3_slot_t *slot1 = &stage3_tree[bucket_indices[j]];
             
             __global stage4_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             for (uint b = 0; b < HASHBYTES_STAGE4; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
@@ -1534,7 +1541,9 @@ void kernel_stage5_collisions(
             __global stage4_slot_t *slot1 = &stage4_tree[bucket_indices[j]];
             
             __global stage5_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             for (uint b = 0; b < HASHBYTES_STAGE5; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
@@ -1596,7 +1605,9 @@ void kernel_stage6_collisions(
             __global stage5_slot_t *slot1 = &stage5_tree[bucket_indices[j]];
             
             __global stage6_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
@@ -1670,7 +1681,9 @@ void kernel_stage7_collisions(
             if (!is_zero) continue;  // Not a valid solution
             
             __global stage7_slot_t *out = &output_base[collision_count];
-            out->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Store parent indices using 20+12 bit encoding
+            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
+            out->attr = (bucket_indices[i] << 12) | delta;
             
             // Final hash should be all zeros
             for (uint b = 0; b < HASHBYTES_STAGE7; b++) {
