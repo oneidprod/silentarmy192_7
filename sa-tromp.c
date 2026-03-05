@@ -475,12 +475,28 @@ int main(int argc, char *argv[]) {
     
     printf("Mining with test header: \"test_block_header_data_192_7\"\n");
     
-    // Mine in a single batch (memory optimized to fit 8GB)
-    printf("\n═══ Mining %u nonces in single batch ═══\n", total_nonces);
+    // Mine in batches (Beignet driver limit: ~1.1M nonces max per batch)
+    uint32_t batch_size = 1000000;  // 1M nonces per batch (safe limit)
+    uint32_t num_batches = (total_nonces + batch_size - 1) / batch_size;
+    
+    printf("\nProcessing in %u batch(es) of up to %u nonces each\n", num_batches, batch_size);
+    printf("(Beignet driver limitation: max ~1.1M nonces per batch)\n");
     
     clock_t overall_start = clock();
     
-    int total_solutions = mine_batch(total_nonces, header, 1);
+    int total_solutions = 0;
+    for (uint32_t batch = 0; batch < num_batches; batch++) {
+        uint32_t batch_nonces = (batch == num_batches - 1) ? 
+            (total_nonces - batch * batch_size) : batch_size;
+        
+        printf("\n═══ Batch %u/%u: %u nonces ═══\n", batch + 1, num_batches, batch_nonces);
+        int solutions = mine_batch(batch_nonces, header, 1);
+        total_solutions += solutions;
+        
+        if (solutions > 0) {
+            printf("✅ Found %d valid solution(s) in this batch!\n", solutions);
+        }
+    }
     
     clock_t overall_end = clock();
     double total_time = (double)(overall_end - overall_start) / CLOCKS_PER_SEC;
