@@ -1156,7 +1156,7 @@ exit1:
 #define RESTBITS 10                  // Collision filtering bits
 #define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 14
 #define NBUCKETS_STAGE1 (1<<BUCKBITS) // 16K buckets (2^14)
-#define NSLOTS_STAGE1 256             // Slots per bucket (increased for overflow)
+#define NSLOTS_STAGE1 512             // Slots per bucket (increased for overflow)
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
 #define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
 
