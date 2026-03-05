@@ -183,37 +183,40 @@ The "restart the server" approach = **reset OpenCL/GPU state to fix corruption**
 2. **Time check**: If >2 hours elapsed, move to next phase
 3. **Sanity check**: Are we making measurable progress toward pool acceptance?
 
-## Current Status Checkpoint (2026-03-05)
+## Current Status Checkpoint (2026-03-05 Update 2)
 
-**Current Phase**: Phase 6a - Local GPU Solution Generation (BEFORE pool testing)  
+**Current Phase**: Phase 6a - Beignet OpenCL Kernel Caching Issue  
 **Working Configuration**:
 - RESTBITS=10, NSLOTS=512, NBUCKETS=16K
 - Batch size: 187K nonces (374K hashes)  
-- Stage 1 attr: 20-bit idx0 + 12-bit delta encoding
+- ALL stages: 20-bit idx0 + 12-bit delta encoding ✓ (in source code)
 
-**Progress - 10M Nonce Test**:
-- ✅ Stage 1: ~16K collisions per batch (working)
-- ✅ Stage 2: ~8K collisions (working)
-- ✅ Stage 3: ~2K collisions (working)
-- ✅ Stage 4: ~150 collisions (working)
-- ✅ Stage 5: 49 total collisions (working)
-- ✅ Stage 6: 112 total collisions (FIRST TIME REACHED!)
-- ✅ Stage 7: 518 solution candidates (cascade complete!)
-- ❌ **BLOCKER**: All 518 candidates have duplicate hash indices
+**Progress - Kernel Implementation**:
+- ✅ Fixed Stage 1 attr encoding: (idx0 << 12) | delta
+- ✅ Fixed Stages 2-7 attr encoding: (idx0 << 12) | delta  
+- ✅ _kernel.h regenerated with correct code for all stages
+- ✅ solution_extraction.c updated to decode 20+12 bit format
+- ❌ **CRITICAL BUG**: Beignet OpenCL driver caches old compiled kernels!
 
-**Root Cause Analysis**:
-- Stage 1 attr encoding: FIXED (20+12 bits for hash indices)
-- Stages 2-7 attr encoding: BROKEN (stores local bucket positions i,j instead of global tree references)
-- Solution extraction walks tree correctly but reaches wrong leaf indices
-- Need: Stages 2-7 must encode full tree path to trace back to Stage 1 leaves
+**Beignet Caching Issue**:
+- Pattern discovered:
+  - First run after rebuild: attr = correct (e.g., 0x18853e4e) ✓
+  - Subsequent runs in loop: attr = 0x00000000 (cached old kernel) ✗
+  - After delay: attr = correct again (cache expired?) ✓
+- 10M nonce test showed:
+  - Batch 48: attr=0x00000000 → 512 Stage 7 candidates (all duplicates)
+  - Other batches: mixed correct/zero attr values
+- **Root cause**: Beignet caches compiled kernel bytecode somewhere we can't clear
+- **Impact**: Can't reliably test if attr fix actually solves duplicates problem
 
-**Last Commit**: ddc38ce - "progress: 20+12 bit encoding, reached Stage 6-7, but still duplicates"  
-**Backup Branch**: rewrite (current working branch)
+**Last Commit**: 24391dc - "wip: debug attr inconsistency - sometimes correct, sometimes zero"  
+**Branch**: rewrite
 
 **Next Actions**:
-1. Fix Stages 2-7 attr encoding to store proper tree references (not bucket positions)
-2. Verify solution extraction produces unique hash indices
-3. Once valid solutions found → proceed to Pool Phase 1
+1. Work around Beignet caching (add unique comment to force recompile, or restart OpenCL device)
+2. Test with consistent correct attr encoding
+3. Verify solution extraction produces unique hash indices
+4. Once valid solutions found → proceed to Pool Phase 1
 
 ---
 
