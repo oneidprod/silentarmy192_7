@@ -1231,9 +1231,10 @@ void kernel_stage1_collisions(
             // Store collision in output
             __global stage1_slot_t *slot = &output_base[collision_count];
             
-            // Encode tree attribution: bucketid (20 bits) | slot0 (6 bits) | slot1 (6 bits)
-            // For Stage 1, slot0=idx0 and slot1=idx1 (original hash indices)
-            slot->attr = (bucketid << 12) | ((i & 0x3F) << 6) | (j & 0x3F);
+            // Encode tree attribution for Stage 1: Pack the two hash indices
+            // Upper 16 bits: idx0, Lower 16 bits: idx1
+            // (Supports up to 65K hashes = 32.5K nonces per batch)
+            slot->attr = (idx0 << 16) | idx1;
             
             // XOR the remaining hash bytes (skip first 3 bytes used for bucketing)
             // Store from hash byte 2 onwards (include the lower 4 bits of byte 2)

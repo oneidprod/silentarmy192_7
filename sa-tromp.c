@@ -557,8 +557,8 @@ int main(int argc, char *argv[]) {
     
     printf("Mining with test header: \"test_block_header_data_192_7\"\n");
     
-    // Mine in batches (Beignet driver limit: ~1.1M nonces max per batch)
-    uint32_t batch_size = 189000;  // 189K nonces per batch (hardware limit)
+    // Mine in batches (limited by 16-bit hash index encoding in Stage 1)
+    uint32_t batch_size = 32000;  // 32K nonces = 64K hashes (fits in 16 bits)
     uint32_t num_batches = (total_nonces + batch_size - 1) / batch_size;
     
     printf("\nProcessing in %u batch(es) of up to %u nonces each\n", num_batches, batch_size);
