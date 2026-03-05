@@ -44,3 +44,24 @@ clean :
 	rm -f sa-solver _kernel.h *.o _temp_*
 
 re : clean all
+
+# CPU Tromp baseline solver (Phase 0)
+cpu_tromp_baseline : cpu_tromp_baseline.o blake.o sha256.o
+	${CC} -o cpu_tromp_baseline cpu_tromp_baseline.o blake.o sha256.o ${LDFLAGS}
+
+cpu_tromp_baseline.o : cpu_tromp_baseline.c blake.h param.h sha256.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c cpu_tromp_baseline.c
+
+# Test verifier (existing tool)
+test_verifier : test_verifier.o blake.o sha256.o
+	${CC} -o test_verifier test_verifier.o blake.o sha256.o ${LDFLAGS}
+
+test_verifier.o : test_verifier.c blake.h param.h sha256.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c test_verifier.c
+
+# Blake2b comparison tool (existing)
+compare_blake2b : compare_blake2b.o blake.o
+	${CC} -o compare_blake2b compare_blake2b.o blake.o ${LDFLAGS} ${LDLIBS}
+
+compare_blake2b.o : compare_blake2b.c blake.h param.h _kernel.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c compare_blake2b.c
