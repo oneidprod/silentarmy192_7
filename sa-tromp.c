@@ -220,7 +220,7 @@ void cleanup_opencl(void) {
     clReleaseContext(context);
 }
 
-void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *header) {
+void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *header, uint32_t nonce_offset) {
     blake2b_state_t blake_base, blake;
     
     zcash_blake2b_init(&blake_base, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
@@ -229,7 +229,7 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
     uint32_t num_hashes = nonces * 2;
     for (uint32_t idx = 0; idx < num_hashes; idx++) {
         blake = blake_base;
-        uint32_t g = idx / 2;
+        uint32_t g = (nonce_offset * 2) + (idx / 2);
         zcash_blake2b_update(&blake, (uint8_t*)&g, sizeof(g), 0);
         
         uint8_t blakehash[48];
@@ -240,11 +240,12 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
     }
 }
 
-int mine_batch(uint32_t nonces, uint8_t *header, int show_progress) {
+int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show_progress) {
     uint32_t num_hashes = nonces * 2;
     
     if (show_progress) {
-        printf("\n--- Mining batch: %u nonces (%u hashes) ---\n", nonces, num_hashes);
+        printf("\n--- Mining batch: %u nonces (%u hashes) starting at nonce %u ---\n", 
+               nonces, num_hashes, nonce_offset);
     }
     
     // Generate Round 0 hashes
@@ -253,7 +254,7 @@ int mine_batch(uint32_t nonces, uint8_t *header, int show_progress) {
         fprintf(stderr, "Failed to allocate Round 0 hashes\n");
         return 0;
     }
-    generate_round0_hashes(round0_hashes, nonces, header);
+    generate_round0_hashes(round0_hashes, nonces, header, nonce_offset);
     
     // Allocate GPU buffers
     cl_int err;
@@ -283,6 +284,13 @@ int mine_batch(uint32_t nonces, uint8_t *header, int show_progress) {
         buf_counts[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, NBUCKETS * sizeof(uint32_t), NULL, &err);
         check_error(err, "buf_counts");
     }
+    
+    // Initialize count buffers to zero (critical for correct collision counting)
+    uint32_t *zeros = calloc(NBUCKETS, sizeof(uint32_t));
+    for (int i = 0; i < 7; i++) {
+        clEnqueueWriteBuffer(queue, buf_counts[i], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), zeros, 0, NULL, NULL);
+    }
+    free(zeros);
     
     // Run all 7 stages
     size_t global_work_size = NBUCKETS;
@@ -488,9 +496,11 @@ int main(int argc, char *argv[]) {
     for (uint32_t batch = 0; batch < num_batches; batch++) {
         uint32_t batch_nonces = (batch == num_batches - 1) ? 
             (total_nonces - batch * batch_size) : batch_size;
+        uint32_t nonce_start = batch * batch_size;
         
-        printf("\n═══ Batch %u/%u: %u nonces ═══\n", batch + 1, num_batches, batch_nonces);
-        int solutions = mine_batch(batch_nonces, header, 1);
+        printf("\n═══ Batch %u/%u: nonces %u-%u (%u nonces) ═══\n", 
+               batch + 1, num_batches, nonce_start, nonce_start + batch_nonces - 1, batch_nonces);
+        int solutions = mine_batch(batch_nonces, header, nonce_start, 1);
         total_solutions += solutions;
         
         if (solutions > 0) {
