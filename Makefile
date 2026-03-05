@@ -65,3 +65,13 @@ compare_blake2b : compare_blake2b.o blake.o
 
 compare_blake2b.o : compare_blake2b.c blake.h param.h _kernel.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c compare_blake2b.c
+
+# sa-tromp: Standalone Equihash 192,7 GPU miner with verification (Phase 6)
+sa-tromp : sa-tromp.o blake.o equihash_tromp/blake/blake2b.o
+	${CC} -o sa-tromp sa-tromp.o blake.o equihash_tromp/blake/blake2b.o ${LDFLAGS} ${LDLIBS}
+
+sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c
+	${CC} ${CPPFLAGS} ${CFLAGS} -Iequihash_tromp/blake -c sa-tromp.c
+
+equihash_tromp/blake/blake2b.o : equihash_tromp/blake/blake2b.cpp equihash_tromp/blake/blake2.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c equihash_tromp/blake/blake2b.cpp -o equihash_tromp/blake/blake2b.o
