@@ -1,0 +1,253 @@
+╔═══════════════════════════════════════════════════════════╗
+║         sa-tromp: Equihash 192,7 GPU Miner              ║
+║    Local verification before pool integration testing    ║
+╚═══════════════════════════════════════════════════════════╝
+
+Configuration:
+  Algorithm: Equihash 192,7 (Tromp bucket-based)
+  Collision detection: 24-bit per stage (NBUCKETS=1M, NSLOTS=32)
+  Total nonces: 10000000 (20000000 hashes)
+  Memory: ~5.8GB GPU allocation
+
+Initializing OpenCL...
+✓ OpenCL ready
+
+Mining with test header: "test_block_header_data_192_7"
+
+Processing in 10 batch(es) of up to 1000000 nonces each
+(Beignet driver limitation: max ~1.1M nonces per batch)
+
+═══ Batch 1/10: nonces 0-999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 0 ---
+  [DEBUG] idx=0 -> nonce g=0
+  [DEBUG] idx=1 -> nonce g=0
+  [DEBUG] idx=2 -> nonce g=1
+  [DEBUG] idx=3 -> nonce g=1
+  [DEBUG] idx=1999998 -> nonce g=999999
+  [DEBUG] idx=1999999 -> nonce g=999999
+  [DEBUG] First hash bytes: eb 11 61 5e
+Running GPU stages 1-7...
+  Stage 1: 317 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.60 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 2/10: nonces 1000000-1999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 1000000 ---
+  [DEBUG] idx=0 -> nonce g=1000000
+  [DEBUG] idx=1 -> nonce g=1000000
+  [DEBUG] idx=2 -> nonce g=1000001
+  [DEBUG] idx=3 -> nonce g=1000001
+  [DEBUG] idx=1999998 -> nonce g=1999999
+  [DEBUG] idx=1999999 -> nonce g=1999999
+  [DEBUG] First hash bytes: ed 17 f7 6b
+Running GPU stages 1-7...
+  Stage 1: 336 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 3/10: nonces 2000000-2999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 2000000 ---
+  [DEBUG] idx=0 -> nonce g=2000000
+  [DEBUG] idx=1 -> nonce g=2000000
+  [DEBUG] idx=2 -> nonce g=2000001
+  [DEBUG] idx=3 -> nonce g=2000001
+  [DEBUG] idx=1999998 -> nonce g=2999999
+  [DEBUG] idx=1999999 -> nonce g=2999999
+  [DEBUG] First hash bytes: 97 e0 7e 42
+Running GPU stages 1-7...
+  Stage 1: 330 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.67 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 4/10: nonces 3000000-3999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 3000000 ---
+  [DEBUG] idx=0 -> nonce g=3000000
+  [DEBUG] idx=1 -> nonce g=3000000
+  [DEBUG] idx=2 -> nonce g=3000001
+  [DEBUG] idx=3 -> nonce g=3000001
+  [DEBUG] idx=1999998 -> nonce g=3999999
+  [DEBUG] idx=1999999 -> nonce g=3999999
+  [DEBUG] First hash bytes: df b8 a9 69
+Running GPU stages 1-7...
+  Stage 1: 309 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 5/10: nonces 4000000-4999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 4000000 ---
+  [DEBUG] idx=0 -> nonce g=4000000
+  [DEBUG] idx=1 -> nonce g=4000000
+  [DEBUG] idx=2 -> nonce g=4000001
+  [DEBUG] idx=3 -> nonce g=4000001
+  [DEBUG] idx=1999998 -> nonce g=4999999
+  [DEBUG] idx=1999999 -> nonce g=4999999
+  [DEBUG] First hash bytes: 5d 41 0e b2
+Running GPU stages 1-7...
+  Stage 1: 301 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.63 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 6/10: nonces 5000000-5999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 5000000 ---
+  [DEBUG] idx=0 -> nonce g=5000000
+  [DEBUG] idx=1 -> nonce g=5000000
+  [DEBUG] idx=2 -> nonce g=5000001
+  [DEBUG] idx=3 -> nonce g=5000001
+  [DEBUG] idx=1999998 -> nonce g=5999999
+  [DEBUG] idx=1999999 -> nonce g=5999999
+  [DEBUG] First hash bytes: 4c e8 b8 86
+Running GPU stages 1-7...
+  Stage 1: 344 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 7/10: nonces 6000000-6999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 6000000 ---
+  [DEBUG] idx=0 -> nonce g=6000000
+  [DEBUG] idx=1 -> nonce g=6000000
+  [DEBUG] idx=2 -> nonce g=6000001
+  [DEBUG] idx=3 -> nonce g=6000001
+  [DEBUG] idx=1999998 -> nonce g=6999999
+  [DEBUG] idx=1999999 -> nonce g=6999999
+  [DEBUG] First hash bytes: 16 b7 86 a9
+Running GPU stages 1-7...
+  Stage 1: 309 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 8/10: nonces 7000000-7999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 7000000 ---
+  [DEBUG] idx=0 -> nonce g=7000000
+  [DEBUG] idx=1 -> nonce g=7000000
+  [DEBUG] idx=2 -> nonce g=7000001
+  [DEBUG] idx=3 -> nonce g=7000001
+  [DEBUG] idx=1999998 -> nonce g=7999999
+  [DEBUG] idx=1999999 -> nonce g=7999999
+  [DEBUG] First hash bytes: cd 61 2c 3b
+Running GPU stages 1-7...
+  Stage 1: 286 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 9/10: nonces 8000000-8999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 8000000 ---
+  [DEBUG] idx=0 -> nonce g=8000000
+  [DEBUG] idx=1 -> nonce g=8000000
+  [DEBUG] idx=2 -> nonce g=8000001
+  [DEBUG] idx=3 -> nonce g=8000001
+  [DEBUG] idx=1999998 -> nonce g=8999999
+  [DEBUG] idx=1999999 -> nonce g=8999999
+  [DEBUG] First hash bytes: 06 ae 87 ba
+Running GPU stages 1-7...
+  Stage 1: 316 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.62 seconds
+
+No solution candidates found (need more nonces)
+
+═══ Batch 10/10: nonces 9000000-9999999 (1000000 nonces) ═══
+
+--- Mining batch: 1000000 nonces (2000000 hashes) starting at nonce 9000000 ---
+  [DEBUG] idx=0 -> nonce g=9000000
+  [DEBUG] idx=1 -> nonce g=9000000
+  [DEBUG] idx=2 -> nonce g=9000001
+  [DEBUG] idx=3 -> nonce g=9000001
+  [DEBUG] idx=1999998 -> nonce g=9999999
+  [DEBUG] idx=1999999 -> nonce g=9999999
+  [DEBUG] First hash bytes: 99 e7 91 0a
+Running GPU stages 1-7...
+  Stage 1: 299 collisions
+  Stage 2: 0 collisions
+  Stage 3: 0 collisions
+  Stage 4: 0 collisions
+  Stage 5: 0 collisions
+  Stage 6: 0 collisions
+  Stage 7: 0 solution candidates
+GPU mining complete: 0.61 seconds
+
+No solution candidates found (need more nonces)
+
+╔═══════════════════════════════════════════════════════════╗
+║                    MINING COMPLETE                        ║
+╚═══════════════════════════════════════════════════════════╝
+
+Results:
+  Total nonces processed: 10000000
+  Total mining time: 18.62 seconds
+  Hash rate: 537188.60 Sol/s
+  Valid solutions found: 0
+
+⚠️  No valid solutions found
+   This may indicate an issue with collision detection.
+   Check GPU kernel implementation.
+

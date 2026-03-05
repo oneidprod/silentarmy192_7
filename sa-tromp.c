@@ -28,9 +28,11 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define NBUCKETS (1<<20)
-#define NSLOTS 32
-#define SLOTBITS 5
+#define RESTBITS 10
+#define BUCKBITS (24-RESTBITS)
+#define NBUCKETS (1<<BUCKBITS)  // 16K buckets
+#define NSLOTS 96
+#define SLOTBITS 7    // log2(128) rounded up
 #define HASHBYTES_STAGE0 24
 
 /* Define htole32 for little-endian conversion if not available */
@@ -262,6 +264,18 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
     }
     generate_round0_hashes(round0_hashes, nonces, header, nonce_offset);
     
+    // Debug: Check bucket distribution of first 10 hashes
+    if (show_progress) {
+        printf("  [DEBUG] First 10 hash bucket IDs: ");
+        for (int i = 0; i < 10 && i < num_hashes; i++) {
+            unsigned char *hash = round0_hashes + i * HASHBYTES_STAGE0;
+            uint32_t bits24 = ((uint32_t)hash[0] << 16) | ((uint32_t)hash[1] << 8) | ((uint32_t)hash[2]);
+            uint32_t bucket = bits24 >> 4;  // Top 20 bits
+            printf("%u ", bucket);
+        }
+        printf("\n");
+    }
+    
     // Debug: print first hash bytes
     printf("  [DEBUG] First hash bytes: %02x %02x %02x %02x\n", 
            round0_hashes[0], round0_hashes[1], round0_hashes[2], round0_hashes[3]);
@@ -324,8 +338,48 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
     
     clEnqueueReadBuffer(queue, buf_counts[0], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), slot_counts, 0, NULL, NULL);
     uint32_t total = 0;
-    for (uint32_t i = 0; i < NBUCKETS; i++) total += slot_counts[i];
-    if (show_progress) printf("  Stage 1: %u collisions\n", total);
+    uint32_t buckets_with_collisions = 0;
+    uint32_t max_per_bucket = 0;
+    for (uint32_t i = 0; i < NBUCKETS; i++) {
+        total += slot_counts[i];
+        if (slot_counts[i] > 0) buckets_with_collisions++;
+        if (slot_counts[i] > max_per_bucket) max_per_bucket = slot_counts[i];
+    }
+    if (show_progress) {
+        printf("  Stage 1: %u collisions in %u buckets (max %u per bucket)\n", 
+               total, buckets_with_collisions, max_per_bucket);
+        // Show first few non-empty buckets
+        printf("  [DEBUG] First 5 non-empty buckets: ");
+        int shown = 0;
+        for (uint32_t i = 0; i < NBUCKETS && shown < 5; i++) {
+            if (slot_counts[i] > 0) {
+                printf("bucket %u=%u colls, ", i, slot_counts[i]);
+                shown++;
+            }
+        }
+        printf("\n");
+        
+        // Read back first collision to verify data
+        if (buckets_with_collisions > 0) {
+            typedef struct {
+                uint32_t attr;
+                unsigned char hash[22];
+            } stage1_slot_t;
+            
+            stage1_slot_t first_slot;
+            // Find first non-empty bucket
+            for (uint32_t i = 0; i < NBUCKETS; i++) {
+                if (slot_counts[i] > 0) {
+                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t), 
+                                       sizeof(stage1_slot_t), &first_slot, 0, NULL, NULL);
+                    printf("  [DEBUG] First collision attr=0x%08x hash=%02x%02x%02x%02x\n", 
+                           first_slot.attr, first_slot.hash[0], first_slot.hash[1], 
+                           first_slot.hash[2], first_slot.hash[3]);
+                    break;
+                }
+            }
+        }
+    }
     
     // Stages 2-7
     cl_mem stage_inputs[] = {buf_tree1, buf_tree2, buf_tree3, buf_tree4, buf_tree5, buf_tree6};

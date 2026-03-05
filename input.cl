@@ -1153,10 +1153,10 @@ exit1:
 ** Output: Stage 1 collision trees + slot counters
 */
 
-#define NBUCKETS_STAGE1 (1<<20)     // 1M buckets
-#define NSLOTS_STAGE1 32             // Slots per bucket (reduced from 96 for memory optimization)
-#define BUCKBITS 20                  // Bucket selection bits
-#define RESTBITS 4                   // Collision filtering bits (24-20=4)
+#define RESTBITS 10                  // Collision filtering bits (Tromp default)
+#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 14
+#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 16K buckets (2^14)
+#define NSLOTS_STAGE1 96              // Slots per bucket (Tromp default)
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
 #define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
 
