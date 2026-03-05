@@ -104,7 +104,7 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces) {
     blake2b_state_t blake_base, blake;
     
     uint8_t header[140] = {0};
-    memcpy(header, "TestBlock", 9);
+    memcpy(header, "test_block_header_data_192_7", 28);  // Match CPU baseline
     
     zcash_blake2b_init(&blake_base, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
     zcash_blake2b_update(&blake_base, header, 128, 0);
