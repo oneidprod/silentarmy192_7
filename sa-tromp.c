@@ -175,6 +175,10 @@ void check_error(cl_int err, const char *operation) {
 }
 
 void init_opencl(void) {
+    // Static counter to force unique builds (workaround for Beignet kernel caching)
+    static int build_id = 0;
+    build_id++;
+    
     cl_int err;
     
     err = clGetPlatformIDs(1, &platform, NULL);
@@ -192,7 +196,10 @@ void init_opencl(void) {
     program = clCreateProgramWithSource(context, 1, &ocl_code, NULL, &err);
     check_error(err, "clCreateProgramWithSource");
     
-    err = clBuildProgram(program, 1, &device, "-DPARAM_N=192 -DPARAM_K=7", NULL, NULL);
+    // Add unique build ID to force recompilation (workaround for Beignet caching)
+    char build_opts[256];
+    snprintf(build_opts, sizeof(build_opts), "-DPARAM_N=192 -DPARAM_K=7 -DBUILD_ID=%d", build_id);
+    err = clBuildProgram(program, 1, &device, build_opts, NULL, NULL);
     if (err != CL_SUCCESS) {
         size_t log_size;
         clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
