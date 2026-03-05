@@ -817,6 +817,60 @@ int verifyrec(blake2b_state *ctx, u32 *indices, uchar *hash, int r) {
 
 ## OpenCL Port Strategy (Based on zero-nheqminer/cpu_tromp)
 
+### Working Principles
+
+**Development Approach**:
+1. **Incremental validation**: Each phase must demonstrate correctness before moving forward
+2. **CPU baseline first**: Prove algorithm works before GPU complexity
+3. **Controlled testing**: Use nonce_start/nonce_count for debugging (not full 33M dataset)
+4. **Compare outputs**: CPU vs GPU hash comparison at each stage
+5. **No guessing**: If collision counts differ, debug before proceeding
+
+### Git Commit Strategy
+
+**Commit Frequency**:
+- After each phase completion (working or not)
+- Before attempting risky changes
+- After fixing critical bugs
+- Minimum: Every 1-2 hours of work
+
+**Commit Message Format**:
+```
+<phase>: <brief description>
+
+- <change 1>
+- <change 2>
+- Status: <working|broken|investigating>
+- Next: <next step>
+```
+
+**Branch Strategy**:
+- Main work on `rewrite` branch
+- Tag milestones: `phase0-complete`, `phase1-complete`, etc.
+- Create backup before risky experiments
+
+### Documentation Strategy
+
+**CLAUDE_SONNET_4.5.md Updates**:
+1. **Update inline, don't just append**: Mark sections as complete with ✅
+2. **Link related sections**: Use "see below" references to implementation logs
+3. **Preserve thought history**: Don't delete or overwrite existing analysis
+4. **Document failures**: Record what didn't work and why
+5. **Update after each phase**: Even if no code changes, document findings
+
+**What to Document**:
+- Issues encountered (compilation errors, runtime crashes, wrong results)
+- Root cause analysis (why it failed)
+- Solutions applied (what fixed it)
+- Test results (collision counts, execution time, memory usage)
+- Learnings for next phase
+
+**Implementation Logs**:
+- Append detailed logs at end of file
+- Keep summaries in phase sections with "see implementation log below"
+- Include code snippets for critical bugs
+- Note actual time spent vs estimated
+
 ### Phase 0: Establish Baseline ✅ **COMPLETE** (Actual: ~2 hours, see implementation log below)
 
 **Goal**: Build working CPU reference that matches GPU requirements
