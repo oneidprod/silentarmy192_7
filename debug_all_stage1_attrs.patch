@@ -1,0 +1,36 @@
+--- sa-tromp.c.orig
++++ sa-tromp.c
+@@ -365,14 +365,27 @@ static void mine_batch(uint32_t nonce_start, uint32_t batch_size) {
+                 uint32_t attr;
+                 unsigned char hash[22];
+             } stage1_slot_t;
+             
+             stage1_slot_t first_slot;
+-            // Find first non-empty bucket
++            // Debug: Print first 10 collisions from first non-empty bucket
++            int printed = 0;
+             for (uint32_t i = 0; i < NBUCKETS; i++) {
+                 if (slot_counts[i] > 0) {
+-                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t), 
+-                                       sizeof(stage1_slot_t), &first_slot, 0, NULL, NULL);
+-                    printf("  [DEBUG] First collision attr=0x%08x hash=%02x%02x%02x%02x\n", 
+-                           first_slot.attr, first_slot.hash[0], first_slot.hash[1], 
+-                           first_slot.hash[2], first_slot.hash[3]);
++                    stage1_slot_t slots[10];
++                    uint32_t num_to_read = (slot_counts[i] < 10) ? slot_counts[i] : 10;
++                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t), 
++                                       num_to_read * sizeof(stage1_slot_t), slots, 0, NULL, NULL);
++                    printf("  [DEBUG] Bucket %u has %u collisions, first %u attrs:\n", i, slot_counts[i], num_to_read);
++                    for (uint32_t j = 0; j < num_to_read; j++) {
++                        uint32_t idx0 = slots[j].attr >> 12;
++                        uint32_t delta = slots[j].attr & 0xFFF;
++                        uint32_t idx1 = idx0 + delta;
++                        printf("    Collision %u: attr=0x%08x idx0=%u idx1=%u hash=%02x%02x%02x%02x\n",
++                               j, slots[j].attr, idx0, idx1,
++                               slots[j].hash[0], slots[j].hash[1], slots[j].hash[2], slots[j].hash[3]);
++                        printed++;
++                        if (printed >= 10) break;
++                    }
+                     break;
+                 }
+             }
