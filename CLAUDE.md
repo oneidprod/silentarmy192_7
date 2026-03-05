@@ -10,10 +10,15 @@
 - ✅ **Secondary**: Understand why pool rejects valid benchmark solutions
 - ❌ **Failure**: Still pool rejection after completing all planned phases
 
-### Current Status Verified
-- ✅ **Benchmark works**: Solver finds multiple solutions per nonce (confirmed)
-- ❌ **Pool rejection**: Valid solutions are rejected by pools
-- 🎯 **Focus**: Solution format/protocol compatibility with pools
+### Current Status Verified (Updated 2026-03-05)
+- ⏳ **Phase 6a - Local Testing**: sa-tromp GPU miner development
+  - ✅ All 7 GPU stages implemented and working
+  - ✅ Cascade reaches Stage 7: 518 solution candidates (10M nonces)
+  - ✅ Stage 6 reached (first time!): 112 collisions
+  - ❌ **BLOCKER**: All candidates have duplicate indices
+  - 🎯 **Current Focus**: Fix attr encoding in Stages 2-7
+- ⏸️ **Pool Testing**: Waiting for valid local solutions first
+- 🎯 **Next**: Debug solution extraction to eliminate duplicates
 
 ### Time-Boxing Strategy
 - **Maximum 3 investigation phases** (detailed below)
@@ -178,15 +183,38 @@ The "restart the server" approach = **reset OpenCL/GPU state to fix corruption**
 2. **Time check**: If >2 hours elapsed, move to next phase
 3. **Sanity check**: Are we making measurable progress toward pool acceptance?
 
-## Current Status Checkpoint
+## Current Status Checkpoint (2026-03-05)
 
-**Starting Phase**: 1 (Solution Format Analysis)  
-**Confirmed Status**: Benchmark finds multiple solutions per nonce  
-**Current Issue**: Pool rejection of valid solutions  
-**Time Started**: 2026-03-03  
-**Last Commit**: d669303  
-**Backup Created**: pre-pool-debugging-backup
+**Current Phase**: Phase 6a - Local GPU Solution Generation (BEFORE pool testing)  
+**Working Configuration**:
+- RESTBITS=10, NSLOTS=512, NBUCKETS=16K
+- Batch size: 187K nonces (374K hashes)  
+- Stage 1 attr: 20-bit idx0 + 12-bit delta encoding
+
+**Progress - 10M Nonce Test**:
+- ✅ Stage 1: ~16K collisions per batch (working)
+- ✅ Stage 2: ~8K collisions (working)
+- ✅ Stage 3: ~2K collisions (working)
+- ✅ Stage 4: ~150 collisions (working)
+- ✅ Stage 5: 49 total collisions (working)
+- ✅ Stage 6: 112 total collisions (FIRST TIME REACHED!)
+- ✅ Stage 7: 518 solution candidates (cascade complete!)
+- ❌ **BLOCKER**: All 518 candidates have duplicate hash indices
+
+**Root Cause Analysis**:
+- Stage 1 attr encoding: FIXED (20+12 bits for hash indices)
+- Stages 2-7 attr encoding: BROKEN (stores local bucket positions i,j instead of global tree references)
+- Solution extraction walks tree correctly but reaches wrong leaf indices
+- Need: Stages 2-7 must encode full tree path to trace back to Stage 1 leaves
+
+**Last Commit**: ddc38ce - "progress: 20+12 bit encoding, reached Stage 6-7, but still duplicates"  
+**Backup Branch**: rewrite (current working branch)
+
+**Next Actions**:
+1. Fix Stages 2-7 attr encoding to store proper tree references (not bucket positions)
+2. Verify solution extraction produces unique hash indices
+3. Once valid solutions found → proceed to Pool Phase 1
 
 ---
 
-**Remember**: The goal is pool acceptance, not perfect debugging. If we're not getting closer to pool acceptance after each phase, we pivot or document incompatibility. No endless rabbit holes.
+**Remember**: Must get valid local solutions BEFORE attempting pool integration. No point testing pool compatibility with invalid solutions.
