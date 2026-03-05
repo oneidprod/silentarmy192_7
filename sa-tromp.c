@@ -28,11 +28,11 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 10
+#define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
-#define NBUCKETS (1<<BUCKBITS)  // 16K buckets
-#define NSLOTS 96
-#define SLOTBITS 7    // log2(128) rounded up
+#define NBUCKETS (1<<BUCKBITS)  // 1M buckets
+#define NSLOTS 32
+#define SLOTBITS 5    // log2(32)
 #define HASHBYTES_STAGE0 24
 
 /* Define htole32 for little-endian conversion if not available */

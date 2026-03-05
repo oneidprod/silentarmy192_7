@@ -1153,10 +1153,10 @@ exit1:
 ** Output: Stage 1 collision trees + slot counters
 */
 
-#define RESTBITS 10                  // Collision filtering bits (Tromp default)
-#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 14
-#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 16K buckets (2^14)
-#define NSLOTS_STAGE1 96              // Slots per bucket (Tromp default)
+#define RESTBITS 4                   // Collision filtering bits
+#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 20  
+#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 1M buckets (2^20)
+#define NSLOTS_STAGE1 32              // Slots per bucket
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
 #define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
 
@@ -1203,7 +1203,7 @@ void kernel_stage1_collisions(
         // Bits 20-23: RESTBITS for collision filtering
         uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
         uint hash_bucket = bits24 >> RESTBITS;  // Top 20 bits
-        uint hash_rest = bits24 & 0xF;           // Bottom 4 bits
+        uint hash_rest = bits24 & ((1 << RESTBITS) - 1);           // Bottom 4 bits
         
         if (hash_bucket == bucketid) {
             bucket_indices[bucket_count] = hidx;
@@ -1319,7 +1319,7 @@ void kernel_stage2_collisions(
             // Extract first 24 bits from XOR'd hash
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
@@ -1352,6 +1352,11 @@ void kernel_stage2_collisions(
     }
     
     stage2_slot_counts[bucketid] = collision_count;
+    
+    // Debug: first bucket outputs bucket_count
+    if (bucketid == 0 || bucketid == 1) {
+        stage2_slot_counts[bucketid + NBUCKETS_STAGE1] = bucket_count;  // Store in unused space
+    }
 }
 
 /**
@@ -1382,7 +1387,7 @@ void kernel_stage3_collisions(
             
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
@@ -1444,7 +1449,7 @@ void kernel_stage4_collisions(
             
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
@@ -1506,7 +1511,7 @@ void kernel_stage5_collisions(
             
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
@@ -1568,7 +1573,7 @@ void kernel_stage6_collisions(
             
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
@@ -1631,7 +1636,7 @@ void kernel_stage7_collisions(
             
             uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
             uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & 0xF;
+            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
                 bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
