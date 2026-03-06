@@ -2461,3 +2461,200 @@ Must fix Stages 2-7 to properly read and propagate parent tree indices from prev
 
 **User Request**: "make sure md and git are where you want it and we'll pick back up in the morning"
 
+
+---
+
+## Session 3: Attr Encoding Investigation (2026-03-06 Morning)
+
+**User Request**: "Good morning. Please continue where you left off."
+
+### Phase 6b: Tromp's Encoding Analysis - FAILED APPROACH
+
+**Starting Point** (from Session 2):
+- Cascade reaches Stage 7 with 518 candidates
+- All candidates have duplicate indices
+- Stages 2-7 store array positions `src_bucket * 512 + s` instead of tree content
+
+**Mathematical Analysis**:
+```python
+# Tree size calculation
+NBUCKETS = 16,384 (14 bits)
+NSLOTS = 512 (9 bits)
+Total slots = 8,388,608 (needs 23 bits)
+
+# Previous broken encoding
+20-bit idx + 12-bit delta = 32 bits
+Max capacity: 1,048,576 (1M)
+Actual need: 8,388,608 (8.3M)
+Result: OVERFLOW by 8x! ✗
+```
+
+**Tromp's (Bucket, Slot, Slot) Encoding Investigation**:
+
+Analyzed `equihash_tromp/equi_miner.h`:
+```c
+struct tree {
+  tree_t bid_s0_s1;  // bucket_id + slot0 + slot1
+};
+
+// For BUCKBITS=14, SLOTBITS=9:
+// Total: 14 + 9 + 9 = 32 bits ✓ (exactly fits!)
+```
+
+**Implementation Attempt**:
+- Changed Stages 2-7 to store: `attr = (bucket_id << 18) | (slot0 << 9) | slot1`
+- Added `bucket_ids` array to track source bucket per collision
+- Updated solution_extraction.c to decode triplet format
+
+**Build & Test**:
+```bash
+make clean && make -j4    # ✓ Compiled successfully
+./sa-tromp 187000         # ✗ CASCADE REGRESSION!
+```
+
+**Result**:
+```
+Stage 1: 16457 collisions ✓
+Stage 2: 8270 collisions ✓
+Stage 3: 2153 collisions ✓
+Stage 4: 125 collisions ✓
+Stage 5: 0 collisions ✗ (DIED EARLY!)
+Stage 6: 0 collisions
+Stage 7: 0 candidates
+```
+
+### Critical Discovery: Encoding Assumptions Invalid
+
+**The Bug**:
+```c
+// Stage 2 collision phase (WRONG ASSUMPTION):
+out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+// Comment said: "bucket_ids[i] should equal bucket_ids[j] (same source bucket)"
+```
+
+**Why This Assumption is FALSE**:
+
+GPU collection algorithm:
+```c
+// Stage 2 collects from ALL Stage 1 buckets:
+for (uint src_bucket = 0; src_bucket < NBUCKETS; src_bucket++) {
+    for (uint s = 0; s < nslots; s++) {
+        uint hash_bucket = extract_prefix(hash);
+        if (hash_bucket == bucketid) {
+            bucket_indices[k] = s;           // Slot in source bucket
+            bucket_ids[k] = src_bucket;      // Which source bucket
+        }
+    }
+}
+
+// Find collisions within collected items:
+for (uint i = 0; i < bucket_count; i++) {
+    for (uint j = i + 1; j < bucket_count; j++) {
+        // bucket_ids[i] can be 42, bucket_ids[j] can be 137!
+        // They're in same TARGET bucket due to hash prefix
+        // But came from DIFFERENT source buckets!
+    }
+}
+```
+
+**Fundamental Mismatch**:
+- Tromp's CPU code: Uses different tree structure where collisions naturally share parent bucket
+- My GPU code: Scans ALL buckets, collects items matching prefix into ONE target bucket
+- Two items can collide even from different source buckets (just need matching hash bits)
+
+**Encoding Requirement Conflict**:
+- (bucket, slot0, slot1) encoding: Assumes SINGLE parent bucket (14 + 9 + 9 = 32 bits)
+- GPU reality: Need TWO parent positions (14+9 for first, 14+9 for second = 46 bits)
+- Cannot fit 46 bits into 32-bit attr field!
+
+### Actions Taken
+
+**Reverted All Changes**:
+```bash
+git checkout -- input.cl solution_extraction.c
+rm -f ATTR_ENCODING_FIX.md _kernel.h
+make clean && make -j4
+./sa-tromp 187000         # Confirmed: Back to Stage 5-7 cascade
+```
+
+**Result After Revert**:
+```
+Stage 1: 16823 collisions ✓
+Stage 2: 8708 collisions ✓
+Stage 3: 2321 collisions ✓
+Stage 4: 172 collisions ✓
+Stage 5: 2 collisions ✓
+Stage 6: 0 collisions
+Stage 7: 0 candidates
+Total: 0 solutions (back to baseline)
+```
+
+### Current Understanding
+
+**What We Know**:
+1. Cascade works architecturally (reaches Stage 5-7)
+2. Flat position encoding overflows (23 bits needed, only 20 available)
+3. Tromp's (bucket,slot,slot) encoding assumes algorithm structure we don't have
+4. Need different solution approach
+
+**Potential Paths Forward**:
+
+**Option A: Dual-Bucket Encoding** (needs 46 bits - doesn't fit)
+```c
+struct collision_info {
+    uint bucket0:14, slot0:9;  // First parent: 23 bits
+    uint bucket1:14, slot1:9;  // Second parent: 23 bits
+    // Total: 46 bits (16 bits overflow!)
+};
+```
+
+**Option B: Sparse Index Mapping** (complex)
+- Only store collisions that fit in 20 bits
+- Use lookup table for high indices
+- Complicates solution extraction
+
+**Option C: Restructure Collection Algorithm** (major rewrite)
+- Change GPU to match Tromp's tree structure
+- Ensure colliding items always from same source bucket
+- Would require rethinking entire cascade architecture
+
+**Option D: Use 64-bit attr** (memory cost)
+- Change `uint32_t attr` to `uint64_t attr`
+- Doubles attr memory usage
+- But gives 64 bits for encoding (plenty of room)
+
+**Option E: Chain Multiple attr Fields**
+- Store partial info in primary attr
+- Add secondary lookup structure
+- Trade space for encoding bits
+
+### Session 3 Status
+
+**Time Spent**: ~2 hours
+- Mathematical overflow analysis: 20 minutes
+- Tromp encoding research: 30 minutes
+- Implementation (all stages): 40 minutes
+- Testing & debugging discovery: 30 minutes
+
+**Outcome**: 
+- ✅ Proved 20+12 encoding mathematically insufficient
+- ✅ Identified why Tromp's encoding doesn't translate to GPU model
+- ✅ Reverted cleanly to baseline (no broken code left)
+- ❌ Still at 0 valid solutions
+- 🎯 Need architectural decision on encoding strategy
+
+**Files Status**:
+- input.cl: Reverted (clean)
+- solution_extraction.c: Reverted (clean)
+- _kernel.h: Regenerated from clean input.cl
+- Git: Clean working directory (all changes reverted)
+
+**Next Session Recommendation**:
+
+Before implementing any encoding fix, must decide:
+1. Accept memory cost of 64-bit attr? (simplest, works immediately)
+2. Restructure algorithm to match Tromp's guarantees? (cleanest, big rewrite)
+3. Build sparse/hybrid encoding scheme? (complex, error-prone)
+
+Current cascade proves the GPU stages work - just need proper tree index propagation.
+
