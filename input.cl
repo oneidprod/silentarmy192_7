@@ -1586,6 +1586,7 @@ void kernel_stage6_collisions(
     if (bucketid >= NBUCKETS_STAGE1) return;
     
     __private uint bucket_indices[NSLOTS_STAGE1];
+    __private uint bucket_ids[NSLOTS_STAGE1];
     __private uchar bucket_restbits[NSLOTS_STAGE1];
     __private uint bucket_count = 0;
     
@@ -1603,7 +1604,8 @@ void kernel_stage6_collisions(
             uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
             
             if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = src_bucket * NSLOTS_STAGE1 + s;
+                bucket_indices[bucket_count] = s;
+                bucket_ids[bucket_count] = src_bucket;
                 bucket_restbits[bucket_count] = hash_rest;
                 bucket_count++;
             }
@@ -1617,13 +1619,14 @@ void kernel_stage6_collisions(
         for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
             if (bucket_restbits[i] != bucket_restbits[j]) continue;
             
-            __global stage5_slot_t *slot0 = &stage5_tree[bucket_indices[i]];
-            __global stage5_slot_t *slot1 = &stage5_tree[bucket_indices[j]];
+            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
+            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
+            
+            __global stage5_slot_t *slot0 = &stage5_tree[parent_pos0];
+            __global stage5_slot_t *slot1 = &stage5_tree[parent_pos1];
             
             __global stage6_slot_t *out = &output_base[collision_count];
-            // Store parent indices using 20+12 bit encoding
-            uint delta = (bucket_indices[j] - bucket_indices[i]) & 0xFFF;
-            out->attr = (bucket_indices[i] << 12) | delta;
+            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
                 out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
