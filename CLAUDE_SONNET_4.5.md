@@ -2707,3 +2707,26 @@ Stage 7: 0 candidates ✗ (needs fix)
 
 **Note**: The (bucket, slot0, slot1) encoding still assumes bucket_ids[i] == bucket_ids[j] for colliding pairs. This assumption needs verification but appears to hold empirically (stages produce collisions). May need alternative encoding if cross-bucket collisions occur.
 
+
+**Stage 5 Fix** (commit dd1e038):
+- Applied identical pattern to Stage 5 kernel
+- Test: 1M nonces → Stage 5: 1-3 collisions per batch ✓
+- Note: 187K nonces produces 0 Stage 5 collisions (needs larger batches)
+- 1M test also reached Stage 6: 3, Stage 7: 3 candidates
+
+**Stage 6 Fix** (commit ec9539b):
+- Applied identical pattern to Stage 6 kernel
+- Test: Included in Stage 5 1M test ✓
+
+**Status after Stage 5-6 fixes** (1M nonces, 6 batches):
+```
+Stage 1: ~16K collisions per batch ✓
+Stage 2: ~8K collisions ✓
+Stage 3: ~2K collisions ✓
+Stage 4: ~100-150 collisions ✓
+Stage 5: 0-3 collisions (sparse) ✓
+Stage 6: 0-3 collisions (very sparse) ✓
+Stage 7: 0-3 candidates (needs more testing)
+```
+
+**Remaining work**: Fix Stage 7, then update solution_extraction.c to decode new attr format.
