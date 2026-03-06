@@ -2658,3 +2658,52 @@ Before implementing any encoding fix, must decide:
 
 Current cascade proves the GPU stages work - just need proper tree index propagation.
 
+
+---
+
+## Session 3 Continuation: Stage-by-Stage Implementation (2026-03-06 Afternoon)
+
+**After Revert and Analysis**: Implemented proper stage-by-stage approach as documented.
+
+### Commits: df60891 → 08ff930 → fc54597
+
+**Approach**: Fix one stage at a time, test, commit before moving on.
+
+**Stage 2 Fix** (commit df60891):
+- Changed collection phase: Split `bucket_indices[k] = src_bucket * 512 + s` into:
+  - `bucket_indices[k] = s` (slot within source bucket)
+  - `bucket_ids[k] = src_bucket` (which source bucket)
+- Changed collision phase: Reconstruct positions before reading:
+  - `parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i]`
+  - `parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j]`
+- Store encoding: `attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j]`
+- Test: `rm _kernel.h && make sa-tromp && ./sa-tromp 187000`
+- Result: Stage 2: 8,612 collisions ✓
+
+**Stage 3 Fix** (commit 08ff930):
+- Applied identical pattern to Stage 3 kernel
+- Test: Stage 3: 2,177 collisions ✓
+
+**Stage 4 Fix** (commit fc54597):
+- Applied identical pattern to Stage 4 kernel  
+- Test: Stage 4: 137 collisions ✓
+
+### Current Verified State
+
+**Test results** (187K nonces):
+```
+Stage 1: 16,709 collisions ✓
+Stage 2: 8,463 collisions ✓ (fixed)
+Stage 3: 2,119 collisions ✓ (fixed)
+Stage 4: 122 collisions ✓ (fixed)
+Stage 5: 0 collisions ✗ (needs fix)
+Stage 6: 0 collisions ✗ (needs fix)
+Stage 7: 0 candidates ✗ (needs fix)
+```
+
+**Remaining work**: Fix Stages 5, 6, 7 using same pattern, one at a time.
+
+**Critical lesson learned**: Must use `rm _kernel.h && make sa-tromp` (not `make clean` which builds sa-solver).
+
+**Note**: The (bucket, slot0, slot1) encoding still assumes bucket_ids[i] == bucket_ids[j] for colliding pairs. This assumption needs verification but appears to hold empirically (stages produce collisions). May need alternative encoding if cross-bucket collisions occur.
+
