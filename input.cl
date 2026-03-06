@@ -1241,9 +1241,8 @@ void kernel_stage1_collisions(
             slot->attr = (idx0 << 12) | delta;
             
             // XOR the remaining hash bytes (skip first 3 bytes used for bucketing)
-            // Store from hash byte 2 onwards (include the lower 4 bits of byte 2)
             for (uint b = 0; b < HASHBYTES_STAGE1; b++) {
-                slot->hash[b] = hash0[b + 2] ^ hash1[b + 2];
+                slot->hash[b] = hash0[b + 3] ^ hash1[b + 3];
             }
             
             collision_count++;
@@ -1359,7 +1358,7 @@ void kernel_stage2_collisions(
             out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE2; b++) {
-                out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
+                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
             }
             
             collision_count++;
@@ -1431,7 +1430,7 @@ void kernel_stage3_collisions(
             out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE3; b++) {
-                out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
+                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
             }
             
             collision_count++;
@@ -1498,7 +1497,7 @@ void kernel_stage4_collisions(
             out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE4; b++) {
-                out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
+                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
             }
             
             collision_count++;
@@ -1565,7 +1564,7 @@ void kernel_stage5_collisions(
             out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE5; b++) {
-                out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
+                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
             }
             
             collision_count++;
@@ -1632,7 +1631,7 @@ void kernel_stage6_collisions(
             out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
-                out->hash[b] = slot0->hash[b + 2] ^ slot1->hash[b + 2];
+                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
             }
             
             collision_count++;
@@ -1696,10 +1695,10 @@ void kernel_stage7_collisions(
             __global stage6_slot_t *slot0 = &stage6_tree[parent_pos0];
             __global stage6_slot_t *slot1 = &stage6_tree[parent_pos1];
             
-            // Final stage: verify full XOR is zero (all 24 bits)
+            // Final stage: verify remaining 3 bytes XOR to zero
             bool is_zero = true;
-            for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
-                if ((slot0->hash[b + 2] ^ slot1->hash[b + 2]) != 0) {
+            for (uint b = 0; b < HASHBYTES_STAGE7; b++) {
+                if ((slot0->hash[b + 3] ^ slot1->hash[b + 3]) != 0) {
                     is_zero = false;
                     break;
                 }
