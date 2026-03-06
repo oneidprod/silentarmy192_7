@@ -2730,3 +2730,123 @@ Stage 7: 0-3 candidates (needs more testing)
 ```
 
 **Remaining work**: Fix Stage 7, then update solution_extraction.c to decode new attr format.
+
+**Stage 7 Fix** (commit d026b16):
+- Applied identical pattern to Stage 7 kernel (final stage)
+- Test: 187K nonces → Stage 7: 0 candidates (expected, needs 1M+)
+- All 7 GPU stages now using bucket+slot encoding ✓
+
+**Kernel encoding complete**. Next: Update solution_extraction.c to decode new attr format.
+
+**Solution Extraction Fix** (commit 77bb2ff):
+- Updated solution_extraction.c to decode new attr format
+- Stage 1 (r=0): Keep 20+12 bit encoding (hash indices)
+- Stages 2-7 (r≥1): Decode (bucket, slot0, slot1) triplet
+  - `bucket = attr >> 18` (bits 31:18)
+  - `slot0 = (attr >> 9) & 0x1FF` (bits 17:9)
+  - `slot1 = attr & 0x1FF` (bits 8:0)
+  - Reconstruct: `pos = bucket * 512 + slot`
+- Test: 2M nonces → builds and runs correctly
+- Log: agent_logs/solution_extraction_test_2M.log
+- Status: Ready for large-scale test (10M+ nonces) to validate with Stage 7 candidates
+
+**Next**: Run 10M+ nonce test to produce Stage 7 candidates and verify complete solution extraction without duplicates.
+
+## Critical Discovery (commit b38c100)
+
+**Problem**: Not "need more nonces" - fundamental encoding still broken!
+
+**Evidence from test_10M_current.log**:
+- 105 Stage 7 candidates found
+- **ALL 105 have duplicate indices** when extracted
+- This proves tree walk is reading wrong parent positions
+
+**Root cause identified**:
+- Debug shows: 4/5 collision attrs = `0x00000000`, 1/5 = valid `0x03422db5`
+- Pattern: slot_counts[] reports collisions that were NEVER WRITTEN
+- collision_count increments but slot data stays zero (uninitialized)
+- When solution_extraction walks tree with zero attrs, it reads wrong positions → duplicates
+
+**Next**: Find why GPU writes some collisions correctly but most as zeros.
+
+## Diagnostic Plan: Zero Attr Bug Investigation
+
+### Current Status
+- **All 7 GPU kernels** have bucket+slot encoding implemented (commits df60891-d026b16)
+- **solution_extraction.c** updated to decode new format (commit 77bb2ff)
+- **Kernel verified**: _kernel.h contains correct `slot->attr = (idx0 << 12) | delta;`
+- **Test results**: 105 Stage 7 candidates → ALL have duplicate indices
+
+### Evidence Summary
+1. Debug output from 50K nonce test:
+   ```
+   [0] attr=0x00000000 hash=00000000  ← uninitialized
+   [1] attr=0x03422db5 hash=0041a8e8  ← VALID
+   [2] attr=0x00000000 hash=00000000  ← uninitialized
+   [3] attr=0x00000000 hash=00000000  ← uninitialized
+   [4] attr=0x00000000 hash=00000000  ← uninitialized
+   ```
+
+2. Pattern: 1/5 collisions written correctly, 4/5 remain zero
+3. slot_counts[] reports 5 collisions, but only 1 actually written
+4. Solution extraction with zero attrs reads wrong positions → duplicate indices
+
+### Hypothesis Tree
+
+**H1: Buffer Addressing Bug in Stages 2-7**
+- Problem: `parent_pos = bucket_id * NSLOTS_STAGE1 + slot_index` might exceed actual buffer layout
+- Tree buffers allocated as flat array: `NBUCKETS * NSLOTS * sizeof(slot)` 
+- But actual collisions per bucket varies (sparse)
+- If addressing assumes fixed layout but buffer is compact → out-of-bounds read
+- **Test**: Validate parent_pos < tree_size before read
+
+**H2: slot_counts[] Race or Overflow**
+- Problem: collision_count increments but slot write skipped
+- Possible: `collision_count >= NSLOTS_STAGE1` check passes loop condition but fails slot write
+- Or: Atomic write to stage_slot_counts[] happens BEFORE slot write completes
+- **Test**: Add explicit bounds check before slot write, log overflow events
+
+**H3: Private Array Overflow (bucket_indices[], bucket_ids[])**
+- Problem: Arrays sized for NSLOTS_STAGE1 (512) but bucket_count could exceed
+- If bucket_count > 512: overflow private stack → corrupt collision detection
+- **Test**: Add `if (bucket_count >= NSLOTS_STAGE1) break;` before array write
+
+**H4: Uninitialized Tree Buffers**
+- Problem: Buffers created with CL_MEM_READ_WRITE but no explicit zero init
+- Old data from previous batches persists
+- slot_counts[] increments correctly, but reads hit old zero slots
+- **Test**: Explicitly zero tree buffers before Stage 1
+
+### Investigation Phases
+
+**Phase 1: Kernel Bounds Checking** (15 min)
+- Add overflow protection to Stage 1 collision loop
+- Log when collision_count approaches NSLOTS_STAGE1 limit
+- Verify collision_count never exceeds array bounds
+
+**Phase 2: Stage 2 Position Validation** (20 min)  
+- Add bounds check for parent_pos before reading Stage 1 tree
+- Validate bucket_id and slot_index are within expected ranges
+- Print first invalid position encountered
+
+**Phase 3: Explicit Buffer Zeroing** (10 min)
+- Zero all tree buffers before each mining batch
+- Compare results: do zero attrs disappear?
+
+**Phase 4: Detailed Slot Content Analysis** (15 min)
+- Read back entire first non-empty bucket (all slots)
+- Count non-zero attrs vs slot_counts[bucket]
+- Identify pattern: are zeros at specific positions?
+
+### Success Criteria
+- **After fix**: ALL collision attrs non-zero (or collision not counted)
+- **Validation**: Extract Stage 7 candidate → 128 unique hash indices
+- **Outcome**: Valid Equihash solutions without brute force
+
+### Time Budget
+- **Maximum 2 hours** across all 4 phases
+- **Decision point**: If no root cause found → escalate to OpenCL driver debugging
+- **Commit frequency**: After each phase (working or not)
+
+### Next Action
+Execute Phase 1: Add kernel-side bounds checking to Stage 1 collision loop.
