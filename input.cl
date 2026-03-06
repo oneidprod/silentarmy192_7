@@ -1,4 +1,7 @@
+/* BUILD_ID: 20260306_083000_force_recompile_bucket_slot_encoding */
 #include "param.h"
+
+#define KERNEL_BUILD_ID 20260306083000UL  // Force Beignet recompilation
 
 /* Enable extra kernel-side diagnostics: extraction debug and per-round counters */
 #define DEBUG_EXTRACTION
