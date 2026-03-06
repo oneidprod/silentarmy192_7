@@ -2508,8 +2508,8 @@ struct tree {
 
 **Build & Test**:
 ```bash
-make clean && make -j4    # ✓ Compiled successfully
-./sa-tromp 187000         # ✗ CASCADE REGRESSION!
+rm _kernel.h && make sa-tromp    # ✓ Compiled successfully
+./sa-tromp 187000                # ✗ CASCADE REGRESSION!
 ```
 
 **Result**:
@@ -2573,7 +2573,7 @@ for (uint i = 0; i < bucket_count; i++) {
 ```bash
 git checkout -- input.cl solution_extraction.c
 rm -f ATTR_ENCODING_FIX.md _kernel.h
-make clean && make -j4
+rm _kernel.h && make sa-tromp
 ./sa-tromp 187000         # Confirmed: Back to Stage 5-7 cascade
 ```
 
