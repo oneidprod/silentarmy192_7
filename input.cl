@@ -1165,8 +1165,9 @@ exit1:
 
 // Stage 1 slot structure
 typedef struct {
-    uint attr;                       // Tree attribution: bucketid + slot0 + slot1
+    ulong attr;                      // Tree attribution: 25-bit idx0 | (25-bit idx1 << 25)
     uchar hash[HASHBYTES_STAGE1];    // Remaining hash bytes (21 bytes)
+    uchar pad[3];                    // Padding to 32-byte struct (8+21+3=32)
 } stage1_slot_t;
 
 /**
@@ -1234,11 +1235,10 @@ void kernel_stage1_collisions(
             // Store collision in output
             __global stage1_slot_t *slot = &output_base[collision_count];
             
-            // Encode tree attribution for Stage 1: 20-bit idx0 + 12-bit delta
-            // Upper 20 bits: idx0 (supports up to 1M hashes = 500K nonces)
-            // Lower 12 bits: (idx1 - idx0) & 0xFFF (delta, wraps if > 4095)
-            uint delta = (idx1 - idx0) & 0xFFF;
-            slot->attr = (idx0 << 12) | delta;
+            // Encode tree attribution for Stage 1: 25-bit idx0 | (25-bit idx1 << 25)
+            // Stored in ulong (64-bit) — no delta, both indices stored directly.
+            // Supports up to 2^25 = 33M hash indices (full Equihash 192,7 range).
+            slot->attr = (ulong)idx0 | ((ulong)idx1 << 25);
             
             // XOR the remaining hash bytes (skip first 3 bytes used for bucketing)
             for (uint b = 0; b < HASHBYTES_STAGE1; b++) {

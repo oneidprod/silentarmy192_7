@@ -369,25 +369,29 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
         // Read back first collision to verify data
         if (buckets_with_collisions > 0) {
             typedef struct {
-                uint32_t attr;
-                unsigned char hash[22];
+                uint64_t attr;
+                unsigned char hash[21];
+                unsigned char pad[3];
             } stage1_slot_t;
-            
+
             stage1_slot_t slots[5];
             int slots_read = 0;
             // Find first non-empty bucket and read first 5 collisions
             for (uint32_t i = 0; i < NBUCKETS && slots_read < 5; i++) {
                 if (slot_counts[i] > 0) {
                     uint32_t to_read = (slot_counts[i] < (5 - slots_read)) ? slot_counts[i] : (5 - slots_read);
-                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t), 
+                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t),
                                        to_read * sizeof(stage1_slot_t), &slots[slots_read], 0, NULL, NULL);
                     slots_read += to_read;
                 }
             }
             printf("  [DEBUG] First %d collision attr values:\n", slots_read);
             for (int i = 0; i < slots_read; i++) {
-                printf("    [%d] attr=0x%08x hash=%02x%02x%02x%02x\n", i,
-                       slots[i].attr, slots[i].hash[0], slots[i].hash[1], 
+                uint32_t idx0 = (uint32_t)(slots[i].attr & 0x1FFFFFF);
+                uint32_t idx1 = (uint32_t)(slots[i].attr >> 25);
+                printf("    [%d] attr=0x%016lx idx0=%u idx1=%u hash=%02x%02x%02x%02x\n", i,
+                       slots[i].attr, idx0, idx1,
+                       slots[i].hash[0], slots[i].hash[1],
                        slots[i].hash[2], slots[i].hash[3]);
             }
         }

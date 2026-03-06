@@ -15,7 +15,7 @@
 // NBUCKETS, NSLOTS, SLOTBITS inherited from including file (sa-tromp.c)
 
 // Stage slot structures (must match GPU kernels)
-typedef struct { uint32_t attr; unsigned char hash[21]; } stage1_slot_t;
+typedef struct { uint64_t attr; unsigned char hash[21]; unsigned char pad[3]; } stage1_slot_t;
 typedef struct { uint32_t attr; unsigned char hash[18]; } stage2_slot_t;
 typedef struct { uint32_t attr; unsigned char hash[15]; } stage3_slot_t;
 typedef struct { uint32_t attr; unsigned char hash[12]; } stage4_slot_t;
@@ -35,16 +35,14 @@ typedef struct {
 } tree_store_t;
 
 // Decode tree attribution
-// Stage 1: 20-bit idx0 + 12-bit delta format (hash indices)
+// Stage 1: 25-bit idx0 | (25-bit idx1 << 25) stored in uint64_t
 // Stages 2-7: 14-bit bucket + 9-bit slot0 + 9-bit slot1 format (tree positions)
-static inline uint32_t tree_idx0_stage1(uint32_t attr) {
-    return attr >> 12;
+static inline uint32_t tree_idx0_stage1(uint64_t attr) {
+    return (uint32_t)(attr & 0x1FFFFFF);   // lower 25 bits
 }
 
-static inline uint32_t tree_idx1_stage1(uint32_t attr) {
-    uint32_t idx0 = attr >> 12;
-    uint32_t delta = attr & 0xFFF;
-    return idx0 + delta;
+static inline uint32_t tree_idx1_stage1(uint64_t attr) {
+    return (uint32_t)(attr >> 25);         // upper 25 bits
 }
 
 // Stages 2-7: Decode bucket+slot triplet → flat tree position
@@ -79,29 +77,26 @@ static void orderindices(uint32_t *indices, uint32_t size) {
 }
 
 // Forward declarations
-static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices);
-static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices);
+static void listindices0(tree_store_t *trees, uint32_t r, uint64_t attr, uint32_t *indices);
+static void listindices1(tree_store_t *trees, uint32_t r, uint64_t attr, uint32_t *indices);
 
 // Extract solution indices recursively (even stages - read from trees1, recurse to listindices1)
-static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices) {
+static void listindices0(tree_store_t *trees, uint32_t r, uint64_t attr, uint32_t *indices) {
     if (r == 0) {
-        // Base case: attr contains 20-bit idx0 + 12-bit delta (Stage 1 hash indices)
-        uint32_t idx0 = attr >> 12;
-        uint32_t delta = attr & 0xFFF;
-        uint32_t idx1 = idx0 + delta;
-        indices[0] = idx0;
-        indices[1] = idx1;
+        // Base case: attr contains 25-bit idx0 | (25-bit idx1 << 25) — Stage 1 hash indices
+        indices[0] = tree_idx0_stage1(attr);
+        indices[1] = tree_idx1_stage1(attr);
         return;
     }
-    
+
     // Stages 2-7: Use bucket+slot decoding
-    uint32_t parent0 = tree_idx0_stages27(attr);
-    uint32_t parent1 = tree_idx1_stages27(attr);
+    uint32_t parent0 = tree_idx0_stages27((uint32_t)attr);
+    uint32_t parent1 = tree_idx1_stages27((uint32_t)attr);
     uint32_t size = 1 << r;
     uint32_t *indices1 = indices + size;
-    
+
     // Read from the appropriate trees0 stage
-    uint32_t attr0, attr1;
+    uint64_t attr0, attr1;
     
     if (r == 2) {
         // Stage 2 output (even) - read from trees0_stage2
@@ -127,18 +122,18 @@ static void listindices0(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
 }
 
 // Extract solution indices recursively (odd stages - read from trees0, recurse to listindices0)
-static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_t *indices) {
+static void listindices1(tree_store_t *trees, uint32_t r, uint64_t attr, uint32_t *indices) {
     // Stages 1-7: Use bucket+slot decoding
-    uint32_t parent0 = tree_idx0_stages27(attr);
-    uint32_t parent1 = tree_idx1_stages27(attr);
+    uint32_t parent0 = tree_idx0_stages27((uint32_t)attr);
+    uint32_t parent1 = tree_idx1_stages27((uint32_t)attr);
     uint32_t size = 1 << r;
     uint32_t *indices1 = indices + size;
-    
+
     // Read from the appropriate trees1 stage
-    uint32_t attr0, attr1;
-    
+    uint64_t attr0, attr1;
+
     if (r == 1) {
-        // Stage 1 output (odd) - read from trees1_stage1
+        // Stage 1 output (odd) - read from trees1_stage1 (uint64_t attr)
         attr0 = trees->trees1_stage1[parent0].attr;
         attr1 = trees->trees1_stage1[parent1].attr;
     } else if (r == 3) {
@@ -157,7 +152,7 @@ static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
         fprintf(stderr, "listindices1: invalid stage r=%u\n", r);
         return;
     }
-    
+
     // Recurse to even stages
     listindices0(trees, r - 1, attr0, indices);
     listindices0(trees, r - 1, attr1, indices1);
@@ -168,7 +163,7 @@ static void listindices1(tree_store_t *trees, uint32_t r, uint32_t attr, uint32_
 // Returns 1 if valid (no duplicates), 0 if invalid
 int extract_solution(tree_store_t *trees, uint32_t candidate_attr, uint32_t *solution_indices) {
     // Extract all 128 indices
-    listindices1(trees, PARAM_K, candidate_attr, solution_indices);
+    listindices1(trees, PARAM_K, (uint64_t)candidate_attr, solution_indices);
     
     // Check for duplicates
     uint32_t sorted[PROOFSIZE];
