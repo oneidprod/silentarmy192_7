@@ -7,6 +7,15 @@
 4. **Follow CLAUDE.md governance.** Time-boxing, commit format, anti-spiral protocol.
 5. **CLAUDE_SONNET_4.5.md is read-only history.** Reference, don't append.
 
+## Mandatory Workflow (every change)
+1. Plan → explain what I'll do and what I expect
+2. Edit → make the code change
+3. Test → run the test, check result
+4. Commit code → `git add <files> && git commit`
+5. Update this doc → append to Completed Steps, update Immediate Next Step
+6. Commit doc → `git add CLAUDE_OPUS_4.6.md && git commit`
+7. Report back → tell user what happened, wait for go-ahead
+
 ## Current Verified State (2026-03-06)
 
 **Last Commit**: cf4bfc3 — `fix: macro redefinition bug in solution_extraction.c (Opus analysis)`
