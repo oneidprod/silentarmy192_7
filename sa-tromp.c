@@ -166,6 +166,7 @@ cl_context context;
 cl_command_queue queue;
 cl_program program;
 cl_kernel kernels[7];
+cl_kernel kernel_round0_gen;
 
 void check_error(cl_int err, const char *operation) {
     if (err != CL_SUCCESS) {
@@ -220,10 +221,13 @@ void init_opencl(void) {
         kernels[i] = clCreateKernel(program, kernel_names[i], &err);
         check_error(err, kernel_names[i]);
     }
+    kernel_round0_gen = clCreateKernel(program, "kernel_round0_gen", &err);
+    check_error(err, "kernel_round0_gen");
 }
 
 void cleanup_opencl(void) {
     for (int i = 0; i < 7; i++) clReleaseKernel(kernels[i]);
+    clReleaseKernel(kernel_round0_gen);
     clReleaseProgram(program);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
@@ -323,7 +327,76 @@ int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show
         clEnqueueWriteBuffer(queue, buf_counts[i], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), zeros, 0, NULL, NULL);
     }
     free(zeros);
-    
+
+    // === Step 2 test: run kernel_round0_gen, verify tree0 bucket distribution ===
+    {
+        blake2b_state_t blake_gen;
+        zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+        zcash_blake2b_update(&blake_gen, header, 128, 0);
+
+        cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                             8 * sizeof(uint64_t), blake_gen.h, &err);
+        check_error(err, "buf_blake_st");
+
+        size_t tree0_slots = (size_t)NBUCKETS * NSLOTS;
+        cl_mem buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                          tree0_slots * sizeof(stage0_slot_t), NULL, &err);
+        if (err != CL_SUCCESS) {
+            printf("  [kernel_round0_gen] WARNING: tree0 alloc failed (err=%d) — skipping\n", err);
+            clReleaseMemObject(buf_blake_st);
+        } else {
+            cl_mem buf_t0_counts = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                                  NBUCKETS * sizeof(uint32_t), NULL, &err);
+            check_error(err, "buf_t0_counts");
+
+            uint32_t *t0_zeros = calloc(NBUCKETS, sizeof(uint32_t));
+            clEnqueueWriteBuffer(queue, buf_t0_counts, CL_TRUE, 0,
+                                 NBUCKETS * sizeof(uint32_t), t0_zeros, 0, NULL, NULL);
+            free(t0_zeros);
+
+            clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st);
+            clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &buf_tree0);
+            clSetKernelArg(kernel_round0_gen, 2, sizeof(cl_mem), &buf_t0_counts);
+
+            /* Smoke test: 2^18 work items = 512K hashes (safe for Beignet iGPU).
+               Full mining uses 2^24; split into batches there to avoid GPU hang. */
+            size_t gws_r0 = (size_t)(1 << 18);
+            size_t lws_r0 = 64;
+            if (show_progress)
+                printf("  [kernel_round0_gen] Smoke test: %zu work items (%zu hashes)...\n",
+                       gws_r0, gws_r0 * 2);
+            clock_t r0_t0 = clock();
+            err = clEnqueueNDRangeKernel(queue, kernel_round0_gen, 1, NULL,
+                                         &gws_r0, &lws_r0, 0, NULL, NULL);
+            check_error(err, "kernel_round0_gen enqueue");
+            clFinish(queue);
+            double r0_dt = (double)(clock() - r0_t0) / CLOCKS_PER_SEC;
+
+            uint32_t *t0_counts = calloc(NBUCKETS, sizeof(uint32_t));
+            clEnqueueReadBuffer(queue, buf_t0_counts, CL_TRUE, 0,
+                                NBUCKETS * sizeof(uint32_t), t0_counts, 0, NULL, NULL);
+
+            uint64_t t0_total = 0;
+            uint32_t t0_max = 0, t0_overflow = 0;
+            for (uint32_t b = 0; b < NBUCKETS; b++) {
+                t0_total += t0_counts[b];
+                if (t0_counts[b] > t0_max) t0_max = t0_counts[b];
+                if (t0_counts[b] > NSLOTS) t0_overflow++;
+            }
+            printf("  [kernel_round0_gen] %.2fs: %llu hashes, avg=%.1f/bucket, max=%u, overflow_buckets=%u\n",
+                   r0_dt, (unsigned long long)t0_total,
+                   (double)t0_total / NBUCKETS, t0_max, t0_overflow);
+            if (t0_overflow == 0)
+                printf("  [kernel_round0_gen] OK: no bucket overflow (NSLOTS=%u)\n", NSLOTS);
+
+            free(t0_counts);
+            clReleaseMemObject(buf_tree0);
+            clReleaseMemObject(buf_t0_counts);
+            clReleaseMemObject(buf_blake_st);
+        }
+    }
+    // === End Step 2 test ===
+
     // Run all 7 stages
     size_t global_work_size = NBUCKETS;
     uint32_t *slot_counts = calloc(NBUCKETS, sizeof(uint32_t));
@@ -543,10 +616,9 @@ int main(int argc, char *argv[]) {
     
     if (argc > 1) {
         total_nonces = atoi(argv[1]);
-        if (total_nonces < 1000 || total_nonces > 100000000) {
+        if (total_nonces < 1 || total_nonces > 100000000) {
             fprintf(stderr, "Usage: %s [nonces]\n", argv[0]);
-            fprintf(stderr, "Nonces must be between 1,000 and 100,000,000\n");
-            fprintf(stderr, "Recommended: 1000000-2000000 for solution probability\n");
+            fprintf(stderr, "Nonces must be between 1 and 100,000,000\n");
             return 1;
         }
     }

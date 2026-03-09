@@ -15,6 +15,7 @@
 // NBUCKETS, NSLOTS, SLOTBITS inherited from including file (sa-tromp.c)
 
 // Stage slot structures (must match GPU kernels)
+typedef struct { uint32_t attr; uint8_t hash[24]; } stage0_slot_t;
 typedef struct { uint64_t attr; unsigned char hash[21]; unsigned char pad[3]; } stage1_slot_t;
 typedef struct { uint32_t attr; unsigned char hash[18]; } stage2_slot_t;
 typedef struct { uint32_t attr; unsigned char hash[15]; } stage3_slot_t;

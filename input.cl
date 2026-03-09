@@ -1721,3 +1721,197 @@ void kernel_stage7_collisions(
     stage7_slot_counts[bucketid] = collision_count;
 }
 
+// =============================================================================
+// Stage 0: GPU hash generation (replaces CPU generate_round0_hashes)
+// =============================================================================
+
+typedef struct {
+    uint  attr;      /* hash index 0..2^25-1 */
+    uchar hash[24];  /* raw 24-byte Blake2b output segment */
+} stage0_slot_t;
+
+/**
+ * kernel_round0_gen
+ *
+ * Generates all 2^25 hashes for one mining nonce and writes them into
+ * tree0, organized by bucket (top BUCKBITS bits of first 24 bits of hash).
+ *
+ * Global work size: 2^24 (each work item computes 2 hashes via one BLAKE2b call)
+ * blake_state: 8-word BLAKE2b state after processing the block header
+ */
+__kernel __attribute__((reqd_work_group_size(64, 1, 1)))
+void kernel_round0_gen(
+    __global ulong *blake_state,       /* 8 x ulong pre-initialized state */
+    __global stage0_slot_t *tree0,     /* NBUCKETS_STAGE1 * NSLOTS_STAGE1 slots */
+    __global uint *tree0_counts)       /* atomic slot counters [NBUCKETS_STAGE1] */
+{
+    uint i = get_global_id(0);
+    ulong word1 = (ulong)i << 32;
+
+    ulong v[16];
+    v[0]  = blake_state[0]; v[1]  = blake_state[1];
+    v[2]  = blake_state[2]; v[3]  = blake_state[3];
+    v[4]  = blake_state[4]; v[5]  = blake_state[5];
+    v[6]  = blake_state[6]; v[7]  = blake_state[7];
+    v[8]  = blake_iv[0];    v[9]  = blake_iv[1];
+    v[10] = blake_iv[2];    v[11] = blake_iv[3];
+    v[12] = blake_iv[4];    v[13] = blake_iv[5];
+    v[14] = blake_iv[6];    v[15] = blake_iv[7];
+    v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4;
+    v[14] ^= (ulong)-1;
+
+    /* 12 BLAKE2b rounds — identical schedule to kernel_round0 */
+    mix(v[0], v[4], v[8],  v[12], 0, word1);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], word1, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, word1);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, word1);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, word1);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], word1, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], word1, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, word1);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], word1, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], word1, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, word1);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], word1, 0);
+    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, 0);
+
+    /* Finalize: 48-byte BLAKE2b output as 6 ulongs (h0..h5) */
+    ulong hh0 = blake_state[0] ^ v[0] ^ v[8];
+    ulong hh1 = blake_state[1] ^ v[1] ^ v[9];
+    ulong hh2 = blake_state[2] ^ v[2] ^ v[10];
+    ulong hh3 = blake_state[3] ^ v[3] ^ v[11];
+    ulong hh4 = blake_state[4] ^ v[4] ^ v[12];
+    ulong hh5 = blake_state[5] ^ v[5] ^ v[13];
+
+    /* Hash 0: bytes 0..23 from hh0, hh1, hh2 */
+    {
+        uint bits24 = (((uint)(hh0      ) & 0xFF) << 16) |
+                      (((uint)(hh0 >>  8) & 0xFF) <<  8) |
+                       ((uint)(hh0 >> 16) & 0xFF);
+        uint bucket = bits24 >> RESTBITS;
+        uint slot = atomic_inc(&tree0_counts[bucket]);
+        if (slot < NSLOTS_STAGE1) {
+            __global stage0_slot_t *s = tree0 + bucket * NSLOTS_STAGE1 + slot;
+            s->attr = i * 2;
+            *(__global uint *)(s->hash +  0) = (uint)hh0;
+            *(__global uint *)(s->hash +  4) = (uint)(hh0 >> 32);
+            *(__global uint *)(s->hash +  8) = (uint)hh1;
+            *(__global uint *)(s->hash + 12) = (uint)(hh1 >> 32);
+            *(__global uint *)(s->hash + 16) = (uint)hh2;
+            *(__global uint *)(s->hash + 20) = (uint)(hh2 >> 32);
+        }
+    }
+
+    /* Hash 1: bytes 24..47 from hh3, hh4, hh5 */
+    {
+        uint bits24 = (((uint)(hh3      ) & 0xFF) << 16) |
+                      (((uint)(hh3 >>  8) & 0xFF) <<  8) |
+                       ((uint)(hh3 >> 16) & 0xFF);
+        uint bucket = bits24 >> RESTBITS;
+        uint slot = atomic_inc(&tree0_counts[bucket]);
+        if (slot < NSLOTS_STAGE1) {
+            __global stage0_slot_t *s = tree0 + bucket * NSLOTS_STAGE1 + slot;
+            s->attr = i * 2 + 1;
+            *(__global uint *)(s->hash +  0) = (uint)hh3;
+            *(__global uint *)(s->hash +  4) = (uint)(hh3 >> 32);
+            *(__global uint *)(s->hash +  8) = (uint)hh4;
+            *(__global uint *)(s->hash + 12) = (uint)(hh4 >> 32);
+            *(__global uint *)(s->hash + 16) = (uint)hh5;
+            *(__global uint *)(s->hash + 20) = (uint)(hh5 >> 32);
+        }
+    }
+}
