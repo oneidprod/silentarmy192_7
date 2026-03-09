@@ -1156,10 +1156,10 @@ exit1:
 ** Output: Stage 1 collision trees + slot counters
 */
 
-#define RESTBITS 10                  // Collision filtering bits
-#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 14
-#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 16K buckets (2^14)
-#define NSLOTS_STAGE1 512             // Slots per bucket (increased for overflow)
+#define RESTBITS 4                   // Collision filtering bits
+#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 20
+#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 1M buckets (2^20)
+#define NSLOTS_STAGE1 64              // Slots per bucket
 #define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
 #define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
 
@@ -1355,7 +1355,7 @@ void kernel_stage2_collisions(
             // TEMP: Use compact encoding assuming same bucket (will verify assumption)
             // If bucket_ids[i] != bucket_ids[j], this will produce wrong results
             // Format: bucket_id(14) | slot0(9) | slot1(9) = 32 bits
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE2; b++) {
                 out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
@@ -1427,7 +1427,7 @@ void kernel_stage3_collisions(
             __global stage2_slot_t *slot1 = &stage2_tree[parent_pos1];
             
             __global stage3_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE3; b++) {
                 out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
@@ -1494,7 +1494,7 @@ void kernel_stage4_collisions(
             __global stage3_slot_t *slot1 = &stage3_tree[parent_pos1];
             
             __global stage4_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE4; b++) {
                 out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
@@ -1561,7 +1561,7 @@ void kernel_stage5_collisions(
             __global stage4_slot_t *slot1 = &stage4_tree[parent_pos1];
             
             __global stage5_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE5; b++) {
                 out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
@@ -1628,7 +1628,7 @@ void kernel_stage6_collisions(
             __global stage5_slot_t *slot1 = &stage5_tree[parent_pos1];
             
             __global stage6_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
                 out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
@@ -1707,7 +1707,7 @@ void kernel_stage7_collisions(
             if (!is_zero) continue;  // Not a valid solution
             
             __global stage7_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 18) | (bucket_indices[i] << 9) | bucket_indices[j];
+            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
             
             // Final hash should be all zeros
             for (uint b = 0; b < HASHBYTES_STAGE7; b++) {
