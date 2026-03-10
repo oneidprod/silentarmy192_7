@@ -78,21 +78,34 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**IN PROGRESS** (session may have ended mid-task):
-- [ ] Copy plan to PLAN_ACTIVE.md and commit
-- [ ] Build: `make clean && rm -f _kernel.h && make sa-tromp`
-- [ ] Run: `./sa-tromp 1` — verify Stage 1 ~32 collisions/bucket
-- [ ] If Stage 1 OK → rewrite solution_extraction.c (Step 5)
-- [ ] Update mine_batch() for solution extraction + verify
-- [ ] Run `./sa-tromp 100` → valid solutions
+**IN PROGRESS** — start fresh session with: "Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
 
-**Step 3 GPU test** (then Step 4): Run `./sa-tromp 1` and verify Stage 1 shows ~33 collisions/bucket
-- Code is committed (ad11e0d) — builds clean
-- Risk: kernel_round0_gen 2^24 WI × 64 batches of 2^18 is heavy; watch for Beignet hang/SSH drop
-- If it hangs: reduce DISPATCH from 2^18 to 2^17 in sa-tromp.c (not the full nonce count)
-- If Stage 1 = 0: debug kernel arg binding (check clSetKernelArg order matches kernel signature)
-- After Stage 1 confirmed: Step 4 = restructure main() (one nonce per iteration, already done)
-- Step 5 = fix solution_extraction.c (stage1_slot_t attr: uint64_t → uint32_t)
+### Sub-task checklist:
+- [x] Build: `make clean && rm -f _kernel.h && make sa-tromp` — DONE (clean build)
+- [x] PLAN_ACTIVE.md saved and committed (23ca9a9)
+- [ ] **BLOCKED: memory OOM** — `./sa-tromp 1` fills 5.4 GB available RAM and crashes SSH
+
+### Memory Root Cause (MUST FIX FIRST):
+System: 7.6 GB total, 1.9 GB used, 5.4 GB available (from `free -h`)
+Peak at Stage 1 = tree0(1.75GB) + tree1(1.75GB) = **3.5 GB** → total 5.4 GB → OOM
+
+### Fix (2-line change, do this before running):
+- `input.cl` line 1153: `#define NSLOTS_STAGE1 64` → **`48`**
+- `sa-tromp.c` line 35: `#define NSLOTS 64` → **`48`**
+
+With NSLOTS=48: peak = 2 × 1M × 48 × 28B = 2.69 GB → total 4.59 GB → 0.81 GB margin ✓
+Overflow risk: ~0.2% per bucket, ~1.4% solution loss across 7 stages — acceptable.
+SLOTBITS stays 6 (6 bits ≥ log2(48), attr encoding unchanged).
+
+### After fix, run:
+```
+make clean && rm -f _kernel.h && make sa-tromp && ./sa-tromp 1
+```
+Expected: tree0 ~32/bucket avg, Stage 1 ~32 collisions/bucket, no OOM
+
+### Step 5 (after Stage 1 confirmed):
+Rewrite solution_extraction.c — see PLAN_ACTIVE.md Part B for full details.
+Key bugs: stage1_slot_t.attr is uint64_t (should be uint32_t), attr decoding uses old 14-bit/9-bit widths (should be 20-bit/6-bit), stride=512 (should be 48).
 
 (Steps 3-5 of kernel_round0 plan must complete before pool testing can resume)
 

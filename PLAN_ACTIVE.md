@@ -22,35 +22,50 @@ What remains is to **verify the pipeline runs** and then **add solution extracti
 
 ---
 
-## Part A: GPU Test (`./sa-tromp 1`)
+## Memory Constraint Analysis
 
-No code changes needed. This validates the Phase 1 + Phase 2 pipeline.
+System RAM: 7.6 GB total, 1.9 GB used, **5.4 GB available**.
+
+With NSLOTS=64, peak GPU allocation at Stage 1 = tree0 + tree1 = 2 × 1M × 64 × 28B = **3.5 GB**.
+Total = 1.9 + 3.5 = 5.4 GB → right at the limit → Linux evicts cache → swap → crash.
+Stage 2 also peaks at 3.28 GB. Both stages exceed safe budget.
+
+**Fix: reduce NSLOTS 64 → 48** (two constant changes):
+- tree0 = tree1 = 1M × 48 × 28B = **1.34 GB each** → peak Stage 1 = **2.69 GB**
+- Total at peak = 1.9 + 2.69 = 4.59 GB → 0.81 GB margin ✓
+- Stage 2 peak = 1.34 + 1.15 = 2.49 GB ✓ (all later stages smaller)
+- Overflow: P(bucket > 48 | expected 32) ≈ 0.2% → ~1.4% solution loss across 7 stages. Acceptable.
+- SLOTBITS stays 6 (6 bits holds 0-63, more than enough for 0-47)
+
+## Part A: GPU Test (`./sa-tromp 1`) — with NSLOTS=48
+
+### Code Changes
+
+**[input.cl](input.cl) line 1153**: `#define NSLOTS_STAGE1 64` → `48`
+
+**[sa-tromp.c](sa-tromp.c) line 35**: `#define NSLOTS 64` → `48`
+
+(param.h has no NSLOTS definition — confirmed.)
 
 ### Steps
 
-1. **Build**
-   ```
-   make clean && rm -f _kernel.h && make sa-tromp
-   ```
-   Expected: clean build, no warnings.
+1. **Apply changes** to input.cl and sa-tromp.c
+2. **Build**: `make clean && rm -f _kernel.h && make sa-tromp`
+3. **Run**: `./sa-tromp 1`
 
-2. **Run**
-   ```
-   ./sa-tromp 1
-   ```
-   Expected output per stage:
-   - `tree0`: ~32 hashes/bucket avg, max ~100, overflow=0 (NSLOTS=64 > 32 expected)
-   - `Stage 1`: ~32 collisions/bucket
-   - `Stage 2–6`: ~32 each
-   - `Stage 7`: 0–2 solution candidates
+Expected output:
+- `tree0`: ~32 hashes/bucket avg, max ~60, overflow~0
+- `Stage 1`: ~32 collisions/bucket
+- `Stage 2–6`: ~32 each
+- `Stage 7`: 0–2 solution candidates
 
 ### Fallback Options
 
 | Symptom | Fix |
 |---------|-----|
-| GPU hang / SSH drop | In `sa-tromp.c` line 276: change `DISPATCH = (1<<18)` to `(1<<17)`, rebuild |
-| Stage 1 = 0 | Add printf of `cnt[0]` after tree0 read to verify hash gen; check arg order |
-| `clCreateBuffer` fails | GPU OOM — tree0 is 1.75 GB; check available memory |
+| Still OOMs | Reduce NSLOTS further to 40 (higher overflow risk) or implement shard approach |
+| Stage 1 = 0 | Add printf of `cnt[0]` after tree0 read; check arg order |
+| GPU hang (Beignet) | Reduce `DISPATCH` from `1<<18` to `1<<17` in sa-tromp.c |
 
 ---
 
