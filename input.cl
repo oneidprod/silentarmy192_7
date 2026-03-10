@@ -1150,7 +1150,7 @@ typedef struct {
 #define RESTBITS        4
 #define BUCKBITS        (24 - RESTBITS)
 #define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^20 = 1M */
-#define NSLOTS_STAGE1   64
+#define NSLOTS_STAGE1   40
 
 /* Hash widths at each stage (bytes remaining after XOR cancellation) */
 #define HASHBYTES_STAGE0 24
