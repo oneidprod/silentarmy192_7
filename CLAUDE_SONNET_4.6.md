@@ -83,7 +83,11 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 ### Sub-task checklist:
 - [x] Build: `make clean && rm -f _kernel.h && make sa-tromp` — DONE (clean build)
 - [x] PLAN_ACTIVE.md saved and committed (23ca9a9)
-- [ ] **BLOCKED: memory OOM** — `./sa-tromp 1` fills 5.4 GB available RAM and crashes SSH
+- [ ] **Step A: Edit sa-tromp.c line 35 NSLOTS 64→48** ← DOING NOW
+- [ ] Step A: Edit input.cl line 1153 NSLOTS_STAGE1 64→48
+- [ ] Step A: make clean && make sa-tromp && ./sa-tromp 1
+- [ ] Step B: Rewrite solution_extraction.c (uint32 attr, new BUCKBITS/NSLOTS)
+- [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
 
 ### Memory Root Cause (MUST FIX FIRST):
 System: 7.6 GB total, 1.9 GB used, 5.4 GB available (from `free -h`)
