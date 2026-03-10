@@ -259,358 +259,207 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
     }
 }
 
-int mine_batch(uint32_t nonces, uint8_t *header, uint32_t nonce_offset, int show_progress) {
-    uint32_t num_hashes = nonces * 2;
-    
-    if (show_progress) {
-        printf("\n--- Mining batch: %u nonces (%u hashes) starting at nonce %u ---\n", 
-               nonces, num_hashes, nonce_offset);
-    }
-    
-    // Generate Round 0 hashes
-    unsigned char *round0_hashes = malloc(num_hashes * HASHBYTES_STAGE0);
-    if (!round0_hashes) {
-        fprintf(stderr, "Failed to allocate Round 0 hashes\n");
-        return 0;
-    }
-    generate_round0_hashes(round0_hashes, nonces, header, nonce_offset);
-    
-    // Debug: Check bucket distribution of first 10 hashes
-    if (show_progress) {
-        printf("  [DEBUG] First 10 hash bucket IDs: ");
-        for (int i = 0; i < 10 && i < num_hashes; i++) {
-            unsigned char *hash = round0_hashes + i * HASHBYTES_STAGE0;
-            uint32_t bits24 = ((uint32_t)hash[0] << 16) | ((uint32_t)hash[1] << 8) | ((uint32_t)hash[2]);
-            uint32_t bucket = bits24 >> 4;  // Top 20 bits
-            printf("%u ", bucket);
-        }
-        printf("\n");
-    }
-    
-    // Debug: print first hash bytes
-    printf("  [DEBUG] First hash bytes: %02x %02x %02x %02x\n", 
-           round0_hashes[0], round0_hashes[1], round0_hashes[2], round0_hashes[3]);
-    
-    // Allocate GPU buffers
+/*
+ * mine_batch: run one complete Equihash 192,7 mining attempt.
+ *
+ * Phase 1: kernel_round0_gen fills tree0 with 2^25 hashes (2^24 work items,
+ *          batched at 2^18 to stay within Beignet's NDRange limit).
+ * Phase 2: 7-stage collision cascade — each stage dispatched in 2^18-sized
+ *          batches.  Tree buffers are allocated/freed progressively to fit
+ *          within the ~5.8 GB shared memory budget.
+ *
+ * NOTE: solution extraction is deferred to Step 5.
+ */
+int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     cl_int err;
-    size_t tree_size = NBUCKETS * NSLOTS;
-    
-    cl_mem buf_round0 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                       num_hashes * HASHBYTES_STAGE0, round0_hashes, &err);
-    check_error(err, "buf_round0");
-    clFinish(queue);  // Ensure buffer upload completes
-    
-    cl_mem buf_tree1 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage1_slot_t), NULL, &err);
-    check_error(err, "buf_tree1");
-    cl_mem buf_tree2 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage2_slot_t), NULL, &err);
-    check_error(err, "buf_tree2");
-    cl_mem buf_tree3 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage3_slot_t), NULL, &err);
-    check_error(err, "buf_tree3");
-    cl_mem buf_tree4 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage4_slot_t), NULL, &err);
-    check_error(err, "buf_tree4");
-    cl_mem buf_tree5 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage5_slot_t), NULL, &err);
-    check_error(err, "buf_tree5");
-    cl_mem buf_tree6 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage6_slot_t), NULL, &err);
-    check_error(err, "buf_tree6");
-    cl_mem buf_tree7 = clCreateBuffer(context, CL_MEM_READ_WRITE, tree_size * sizeof(stage7_slot_t), NULL, &err);
-    check_error(err, "buf_tree7");
-    
-    cl_mem buf_counts[7];
-    for (int i = 0; i < 7; i++) {
-        buf_counts[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, NBUCKETS * sizeof(uint32_t), NULL, &err);
-        check_error(err, "buf_counts");
-    }
-    
-    // Initialize count buffers to zero (critical for correct collision counting)
-    uint32_t *zeros = calloc(NBUCKETS, sizeof(uint32_t));
-    for (int i = 0; i < 7; i++) {
-        clEnqueueWriteBuffer(queue, buf_counts[i], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), zeros, 0, NULL, NULL);
-    }
-    free(zeros);
+    /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
+    const size_t DISPATCH = (size_t)(1 << 18);
+    const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
 
-    // === Step 2 test: run kernel_round0_gen, verify tree0 bucket distribution ===
+    if (show_progress)
+        printf("\n--- Mining nonce %u ---\n", nonce_idx);
+
+    /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
+    blake2b_state_t blake_gen;
+    zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    zcash_blake2b_update(&blake_gen, header, 128, 0);
+
+    cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                         8 * sizeof(uint64_t), blake_gen.h, &err);
+    check_error(err, "buf_blake_st");
+
+    /* tree0: 1M buckets x 64 slots x 28 bytes = 1.75 GB */
+    cl_mem buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                      tree_size * sizeof(stage0_slot_t), NULL, &err);
+    check_error(err, "buf_tree0");
+
+    cl_mem buf_t0_cnt = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                       NBUCKETS * sizeof(uint32_t), NULL, &err);
+    check_error(err, "buf_t0_cnt");
     {
-        blake2b_state_t blake_gen;
-        zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-        zcash_blake2b_update(&blake_gen, header, 128, 0);
+        uint32_t *z = calloc(NBUCKETS, sizeof(uint32_t));
+        clEnqueueWriteBuffer(queue, buf_t0_cnt, CL_TRUE, 0,
+                             NBUCKETS * sizeof(uint32_t), z, 0, NULL, NULL);
+        free(z);
+    }
 
-        cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                             8 * sizeof(uint64_t), blake_gen.h, &err);
-        check_error(err, "buf_blake_st");
+    clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st);
+    clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &buf_tree0);
+    clSetKernelArg(kernel_round0_gen, 2, sizeof(cl_mem), &buf_t0_cnt);
 
-        size_t tree0_slots = (size_t)NBUCKETS * NSLOTS;
-        cl_mem buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                          tree0_slots * sizeof(stage0_slot_t), NULL, &err);
-        if (err != CL_SUCCESS) {
-            printf("  [kernel_round0_gen] WARNING: tree0 alloc failed (err=%d) — skipping\n", err);
-            clReleaseMemObject(buf_blake_st);
-        } else {
-            cl_mem buf_t0_counts = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                                  NBUCKETS * sizeof(uint32_t), NULL, &err);
-            check_error(err, "buf_t0_counts");
-
-            uint32_t *t0_zeros = calloc(NBUCKETS, sizeof(uint32_t));
-            clEnqueueWriteBuffer(queue, buf_t0_counts, CL_TRUE, 0,
-                                 NBUCKETS * sizeof(uint32_t), t0_zeros, 0, NULL, NULL);
-            free(t0_zeros);
-
-            clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st);
-            clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &buf_tree0);
-            clSetKernelArg(kernel_round0_gen, 2, sizeof(cl_mem), &buf_t0_counts);
-
-            /* Smoke test: 2^18 work items = 512K hashes (safe for Beignet iGPU).
-               Full mining uses 2^24; split into batches there to avoid GPU hang. */
-            size_t gws_r0 = (size_t)(1 << 18);
-            size_t lws_r0 = 64;
-            if (show_progress)
-                printf("  [kernel_round0_gen] Smoke test: %zu work items (%zu hashes)...\n",
-                       gws_r0, gws_r0 * 2);
-            clock_t r0_t0 = clock();
-            err = clEnqueueNDRangeKernel(queue, kernel_round0_gen, 1, NULL,
-                                         &gws_r0, &lws_r0, 0, NULL, NULL);
-            check_error(err, "kernel_round0_gen enqueue");
+    {
+        /* 2^24 total work items = 2^25 hashes; split into 64 batches of 2^18 */
+        const size_t TOTAL_GEN = (size_t)(1 << 24);
+        const size_t LWS = 64;
+        clock_t t0 = clock();
+        if (show_progress)
+            printf("  round0_gen: %zu work items in %zu batches of %zu...\n",
+                   TOTAL_GEN, TOTAL_GEN / DISPATCH, DISPATCH);
+        for (size_t base = 0; base < TOTAL_GEN; base += DISPATCH) {
+            err = clEnqueueNDRangeKernel(queue, kernel_round0_gen, 1,
+                                         &base, &DISPATCH, &LWS, 0, NULL, NULL);
+            check_error(err, "kernel_round0_gen");
             clFinish(queue);
-            double r0_dt = (double)(clock() - r0_t0) / CLOCKS_PER_SEC;
+        }
+        clReleaseMemObject(buf_blake_st);
 
-            uint32_t *t0_counts = calloc(NBUCKETS, sizeof(uint32_t));
-            clEnqueueReadBuffer(queue, buf_t0_counts, CL_TRUE, 0,
-                                NBUCKETS * sizeof(uint32_t), t0_counts, 0, NULL, NULL);
+        uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
+        clEnqueueReadBuffer(queue, buf_t0_cnt, CL_TRUE, 0,
+                            NBUCKETS * sizeof(uint32_t), cnt, 0, NULL, NULL);
+        uint64_t tot = 0; uint32_t mx = 0, ov = 0;
+        for (uint32_t b = 0; b < NBUCKETS; b++) {
+            tot += cnt[b];
+            if (cnt[b] > mx) mx = cnt[b];
+            if (cnt[b] > NSLOTS) ov++;
+        }
+        free(cnt);
+        if (show_progress)
+            printf("  tree0: %.2fs  %llu hashes  avg=%.1f/bucket  max=%u  overflow=%u\n",
+                   (double)(clock() - t0) / CLOCKS_PER_SEC,
+                   (unsigned long long)tot, (double)tot / NBUCKETS, mx, ov);
+    }
 
-            uint64_t t0_total = 0;
-            uint32_t t0_max = 0, t0_overflow = 0;
-            for (uint32_t b = 0; b < NBUCKETS; b++) {
-                t0_total += t0_counts[b];
-                if (t0_counts[b] > t0_max) t0_max = t0_counts[b];
-                if (t0_counts[b] > NSLOTS) t0_overflow++;
-            }
-            printf("  [kernel_round0_gen] %.2fs: %llu hashes, avg=%.1f/bucket, max=%u, overflow_buckets=%u\n",
-                   r0_dt, (unsigned long long)t0_total,
-                   (double)t0_total / NBUCKETS, t0_max, t0_overflow);
-            if (t0_overflow == 0)
-                printf("  [kernel_round0_gen] OK: no bucket overflow (NSLOTS=%u)\n", NSLOTS);
+    /* ── Phase 2: 7-stage collision cascade ─────────────────────────────── */
 
-            free(t0_counts);
-            clReleaseMemObject(buf_tree0);
-            clReleaseMemObject(buf_t0_counts);
-            clReleaseMemObject(buf_blake_st);
+    /* Allocate all 7 count buffers (4 MB each = 28 MB total) */
+    cl_mem buf_counts[7];
+    {
+        uint32_t *z = calloc(NBUCKETS, sizeof(uint32_t));
+        for (int i = 0; i < 7; i++) {
+            buf_counts[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                           NBUCKETS * sizeof(uint32_t), NULL, &err);
+            check_error(err, "buf_counts");
+            clEnqueueWriteBuffer(queue, buf_counts[i], CL_TRUE, 0,
+                                 NBUCKETS * sizeof(uint32_t), z, 0, NULL, NULL);
         }
+        free(z);
     }
-    // === End Step 2 test ===
 
-    // Run all 7 stages
-    size_t global_work_size = NBUCKETS;
-    uint32_t *slot_counts = calloc(NBUCKETS, sizeof(uint32_t));
-    
-    if (show_progress) {
-        printf("Running GPU stages 1-7...\n");
-    }
-    
-    clock_t start = clock();
-    
-    // Stage 1
-    clSetKernelArg(kernels[0], 0, sizeof(cl_mem), &buf_round0);
-    clSetKernelArg(kernels[0], 1, sizeof(cl_mem), &buf_tree1);
-    clSetKernelArg(kernels[0], 2, sizeof(cl_mem), &buf_counts[0]);
-    clSetKernelArg(kernels[0], 3, sizeof(uint32_t), &num_hashes);
-    err = clEnqueueNDRangeKernel(queue, kernels[0], 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
-    check_error(err, "stage1");
-    clFinish(queue);
-    
-    clEnqueueReadBuffer(queue, buf_counts[0], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), slot_counts, 0, NULL, NULL);
-    uint32_t total = 0;
-    uint32_t buckets_with_collisions = 0;
-    uint32_t max_per_bucket = 0;
-    for (uint32_t i = 0; i < NBUCKETS; i++) {
-        total += slot_counts[i];
-        if (slot_counts[i] > 0) buckets_with_collisions++;
-        if (slot_counts[i] > max_per_bucket) max_per_bucket = slot_counts[i];
-    }
-    if (show_progress) {
-        printf("  Stage 1: %u collisions in %u buckets (max %u per bucket)\n", 
-               total, buckets_with_collisions, max_per_bucket);
-        // Show first few non-empty buckets
-        printf("  [DEBUG] First 5 non-empty buckets: ");
-        int shown = 0;
-        for (uint32_t i = 0; i < NBUCKETS && shown < 5; i++) {
-            if (slot_counts[i] > 0) {
-                printf("bucket %u=%u colls, ", i, slot_counts[i]);
-                shown++;
-            }
-        }
-        printf("\n");
-        
-        // Read back first collision to verify data
-        if (buckets_with_collisions > 0) {
-            typedef struct {
-                uint64_t attr;
-                unsigned char hash[21];
-                unsigned char pad[3];
-            } stage1_slot_t;
+    /* Stage 1: tree0 (stage0_slot_t 28B) -> tree1 (stage1_slot_t 28B GPU)
+     *
+     * IMPORTANT: solution_extraction.c defines stage1_slot_t with uint64_t
+     * attr (32 bytes), but the GPU kernel uses uint32_t attr (28 bytes).
+     * Use the GPU's 28-byte size to match the kernel's pointer strides.
+     * Fixed properly in Step 5.
+     */
+    const size_t STAGE1_GPU_BYTES = 28; /* uint32_t attr(4) + hash[21] + pad[3] */
+    cl_mem buf_tree1 = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                      tree_size * STAGE1_GPU_BYTES, NULL, &err);
+    check_error(err, "buf_tree1");
 
-            stage1_slot_t slots[5];
-            int slots_read = 0;
-            // Find first non-empty bucket and read first 5 collisions
-            for (uint32_t i = 0; i < NBUCKETS && slots_read < 5; i++) {
-                if (slot_counts[i] > 0) {
-                    uint32_t to_read = (slot_counts[i] < (5 - slots_read)) ? slot_counts[i] : (5 - slots_read);
-                    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, i * NSLOTS * sizeof(stage1_slot_t),
-                                       to_read * sizeof(stage1_slot_t), &slots[slots_read], 0, NULL, NULL);
-                    slots_read += to_read;
-                }
-            }
-            printf("  [DEBUG] First %d collision attr values:\n", slots_read);
-            for (int i = 0; i < slots_read; i++) {
-                uint32_t idx0 = (uint32_t)(slots[i].attr & 0x1FFFFFF);
-                uint32_t idx1 = (uint32_t)(slots[i].attr >> 25);
-                printf("    [%d] attr=0x%016lx idx0=%u idx1=%u hash=%02x%02x%02x%02x\n", i,
-                       slots[i].attr, idx0, idx1,
-                       slots[i].hash[0], slots[i].hash[1],
-                       slots[i].hash[2], slots[i].hash[3]);
-            }
+    clSetKernelArg(kernels[0], 0, sizeof(cl_mem), &buf_tree0);
+    clSetKernelArg(kernels[0], 1, sizeof(cl_mem), &buf_t0_cnt);
+    clSetKernelArg(kernels[0], 2, sizeof(cl_mem), &buf_tree1);
+    clSetKernelArg(kernels[0], 3, sizeof(cl_mem), &buf_counts[0]);
+
+    {
+        clock_t ts = clock();
+        for (size_t base = 0; base < NBUCKETS; base += DISPATCH) {
+            size_t count = (base + DISPATCH <= NBUCKETS) ? DISPATCH : (NBUCKETS - base);
+            err = clEnqueueNDRangeKernel(queue, kernels[0], 1,
+                                         &base, &count, NULL, 0, NULL, NULL);
+            check_error(err, "stage1");
+            clFinish(queue);
         }
-    }
-    
-    // Stages 2-7
-    cl_mem stage_inputs[] = {buf_tree1, buf_tree2, buf_tree3, buf_tree4, buf_tree5, buf_tree6};
-    cl_mem stage_outputs[] = {buf_tree2, buf_tree3, buf_tree4, buf_tree5, buf_tree6, buf_tree7};
-    
-    for (int stage = 1; stage < 7; stage++) {
-        clSetKernelArg(kernels[stage], 0, sizeof(cl_mem), &stage_inputs[stage-1]);
-        clSetKernelArg(kernels[stage], 1, sizeof(cl_mem), &buf_counts[stage-1]);
-        clSetKernelArg(kernels[stage], 2, sizeof(cl_mem), &stage_outputs[stage-1]);
-        clSetKernelArg(kernels[stage], 3, sizeof(cl_mem), &buf_counts[stage]);
-        err = clEnqueueNDRangeKernel(queue, kernels[stage], 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
-        check_error(err, "stage_kernel");
-        clFinish(queue);
-        
-        clEnqueueReadBuffer(queue, buf_counts[stage], CL_TRUE, 0, NBUCKETS * sizeof(uint32_t), slot_counts, 0, NULL, NULL);
-        total = 0;
-        for (uint32_t i = 0; i < NBUCKETS; i++) total += slot_counts[i];
-        if (show_progress) {
-            printf("  Stage %d: %u %s\n", stage + 1, total, 
-                   stage == 6 ? "solution candidates" : "collisions");
-            
-            // Debug Stage 2 bucket collection
-            if (stage == 1) {
-                printf("  [DEBUG] Stage 2 first 10 bucket_counts: ");
-                for (int i = 0; i < 10; i++) {
-                    printf("%u ", slot_counts[NBUCKETS - 100 + i]);
-                }
-                printf("\n");
-            }
+        /* tree0 no longer needed */
+        clReleaseMemObject(buf_tree0);
+        clReleaseMemObject(buf_t0_cnt);
+
+        uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
+        clEnqueueReadBuffer(queue, buf_counts[0], CL_TRUE, 0,
+                            NBUCKETS * sizeof(uint32_t), cnt, 0, NULL, NULL);
+        uint32_t tot = 0, mx = 0;
+        for (uint32_t b = 0; b < NBUCKETS; b++) {
+            tot += cnt[b]; if (cnt[b] > mx) mx = cnt[b];
         }
+        free(cnt);
+        if (show_progress)
+            printf("  Stage 1: %.2fs  %u collisions  avg=%.1f/bucket  max=%u\n",
+                   (double)(clock() - ts) / CLOCKS_PER_SEC,
+                   tot, (double)tot / NBUCKETS, mx);
     }
-    
-    clock_t end = clock();
-    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
-    
-    if (show_progress) {
-        printf("GPU mining complete: %.2f seconds\n", elapsed);
-    }
-    
-    int valid_solutions = 0;
-    
-    if (total == 0) {
-        if (show_progress) {
-            printf("\nNo solution candidates found (need more nonces)\n");
-        }
-        goto cleanup;
-    }
-    
-    if (show_progress) {
-        printf("\nExtracting and verifying %u candidate(s)...\n", total);
-    }
-    
-    // Read all tree buffers from GPU
-    tree_store_t trees;
-    trees.trees1_stage1 = malloc(tree_size * sizeof(stage1_slot_t));
-    trees.trees0_stage2 = malloc(tree_size * sizeof(stage2_slot_t));
-    trees.trees1_stage3 = malloc(tree_size * sizeof(stage3_slot_t));
-    trees.trees0_stage4 = malloc(tree_size * sizeof(stage4_slot_t));
-    trees.trees1_stage5 = malloc(tree_size * sizeof(stage5_slot_t));
-    trees.trees0_stage6 = malloc(tree_size * sizeof(stage6_slot_t));
-    trees.trees1_stage7 = malloc(tree_size * sizeof(stage7_slot_t));
-    
-    clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, tree_size * sizeof(stage1_slot_t), trees.trees1_stage1, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree2, CL_TRUE, 0, tree_size * sizeof(stage2_slot_t), trees.trees0_stage2, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree3, CL_TRUE, 0, tree_size * sizeof(stage3_slot_t), trees.trees1_stage3, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree4, CL_TRUE, 0, tree_size * sizeof(stage4_slot_t), trees.trees0_stage4, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree5, CL_TRUE, 0, tree_size * sizeof(stage5_slot_t), trees.trees1_stage5, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree6, CL_TRUE, 0, tree_size * sizeof(stage6_slot_t), trees.trees0_stage6, 0, NULL, NULL);
-    clEnqueueReadBuffer(queue, buf_tree7, CL_TRUE, 0, tree_size * sizeof(stage7_slot_t), trees.trees1_stage7, 0, NULL, NULL);
-    
-    // Extract and verify solutions
-    uint32_t candidates_checked = 0;
-    
-    for (uint32_t bucketid = 0; bucketid < NBUCKETS && candidates_checked < total; bucketid++) {
-        uint32_t bucket_count = slot_counts[bucketid];
-        if (bucket_count == 0) continue;
-        
-        stage7_slot_t *bucket = &trees.trees1_stage7[bucketid * NSLOTS];
-        
-        for (uint32_t slotid = 0; slotid < bucket_count && slotid < NSLOTS; slotid++) {
-            candidates_checked++;
-            uint32_t solution_indices[128];
-            
-            if (!extract_solution(&trees, bucket[slotid].attr, solution_indices)) {
-                if (show_progress) {
-                    printf("  Candidate %u: ✗ Duplicate indices (skipped)\n", candidates_checked);
-                }
-                continue;
+
+    /* Stages 2-7: progressive alloc/free.
+     * sizeof() on the C structs from solution_extraction.c gives the correct
+     * GPU sizes for stages 2-7 (all use uint32_t attr). */
+    const size_t slot_sz[8] = {
+        0,
+        STAGE1_GPU_BYTES,
+        sizeof(stage2_slot_t),
+        sizeof(stage3_slot_t),
+        sizeof(stage4_slot_t),
+        sizeof(stage5_slot_t),
+        sizeof(stage6_slot_t),
+        sizeof(stage7_slot_t)
+    };
+
+    cl_mem prev = buf_tree1, curr = NULL;
+    {
+        uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
+        for (int s = 2; s <= 7; s++) {
+            curr = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                  tree_size * slot_sz[s], NULL, &err);
+            if (err != CL_SUCCESS) {
+                printf("  Stage %d: buffer alloc failed (%d), stopping\n", s, err);
+                clReleaseMemObject(prev);
+                prev = curr = NULL;
+                break;
             }
-            
-            // Verify with full Equihash verification
-            if (verify_equihash_full(solution_indices, header, 0)) {
-                valid_solutions++;
-                printf("\n✅ VALID SOLUTION #%d FOUND!\n", valid_solutions);
-                printf("Indices: ");
-                for (int i = 0; i < 128; i++) {
-                    printf("%08x%s", solution_indices[i], (i < 127) ? " " : "\n");
-                }
-                printf("\n");
-                
-                // Verify with verbose output
-                printf("Verification details:\n");
-                verify_equihash_full(solution_indices, header, 1);
-            } else {
-                if (show_progress) {
-                    printf("  Candidate %u: ✗ Failed Equihash verification\n", candidates_checked);
-                }
+
+            clSetKernelArg(kernels[s-1], 0, sizeof(cl_mem), &prev);
+            clSetKernelArg(kernels[s-1], 1, sizeof(cl_mem), &buf_counts[s-2]);
+            clSetKernelArg(kernels[s-1], 2, sizeof(cl_mem), &curr);
+            clSetKernelArg(kernels[s-1], 3, sizeof(cl_mem), &buf_counts[s-1]);
+
+            clock_t ts = clock();
+            for (size_t base = 0; base < NBUCKETS; base += DISPATCH) {
+                size_t count = (base + DISPATCH <= NBUCKETS) ? DISPATCH : (NBUCKETS - base);
+                err = clEnqueueNDRangeKernel(queue, kernels[s-1], 1,
+                                             &base, &count, NULL, 0, NULL, NULL);
+                check_error(err, "stage_kernel");
+                clFinish(queue);
             }
+
+            clReleaseMemObject(prev);
+            prev = curr;
+
+            clEnqueueReadBuffer(queue, buf_counts[s-1], CL_TRUE, 0,
+                                NBUCKETS * sizeof(uint32_t), cnt, 0, NULL, NULL);
+            uint32_t tot = 0;
+            for (uint32_t b = 0; b < NBUCKETS; b++) tot += cnt[b];
+            if (show_progress)
+                printf("  Stage %d: %.2fs  %u %s\n", s,
+                       (double)(clock() - ts) / CLOCKS_PER_SEC, tot,
+                       s == 7 ? "solution candidates" : "collisions");
         }
+        free(cnt);
     }
-    
-    if (show_progress) {
-        printf("\nBatch results: %d valid solution(s) from %u candidates\n", 
-               valid_solutions, total);
-    }
-    
-    // Cleanup trees
-    free(trees.trees1_stage1);
-    free(trees.trees0_stage2);
-    free(trees.trees1_stage3);
-    free(trees.trees0_stage4);
-    free(trees.trees1_stage5);
-    free(trees.trees0_stage6);
-    free(trees.trees1_stage7);
-    
-cleanup:
-    clReleaseMemObject(buf_round0);
-    clReleaseMemObject(buf_tree1);
-    clReleaseMemObject(buf_tree2);
-    clReleaseMemObject(buf_tree3);
-    clReleaseMemObject(buf_tree4);
-    clReleaseMemObject(buf_tree5);
-    clReleaseMemObject(buf_tree6);
-    clReleaseMemObject(buf_tree7);
+
+    /* curr = tree7.  TODO Step 5: solution extraction and verification. */
+    if (curr) clReleaseMemObject(curr);
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
-    
-    free(slot_counts);
-    free(round0_hashes);
-    
-    return valid_solutions;
+    return 0;  /* TODO Step 5: return valid_solutions */
 }
-
 int main(int argc, char *argv[]) {
     uint32_t total_nonces = 100000;  // Default: 100K nonces
     
@@ -629,83 +478,40 @@ int main(int argc, char *argv[]) {
     printf("╚═══════════════════════════════════════════════════════════╝\n\n");
     
     printf("Configuration:\n");
-    printf("  Algorithm: Equihash 192,7 (Tromp bucket-based)\n");
-    printf("  Collision detection: 24-bit per stage (NBUCKETS=1M, NSLOTS=32)\n");
-    printf("  Total nonces: %u (%u hashes)\n", total_nonces, total_nonces * 2);
-    printf("  Memory: ~5.8GB GPU allocation\n\n");
-    
-    // Initialize OpenCL
+    printf("  Algorithm: Equihash 192,7 (source-bucket GPU kernels)\n");
+    printf("  NBUCKETS=%u  NSLOTS=%u  BUCKBITS=%u  RESTBITS=%u\n",
+           NBUCKETS, NSLOTS, BUCKBITS, RESTBITS);
+    printf("  Mining nonces to attempt: %u\n\n", total_nonces);
+
     printf("Initializing OpenCL...\n");
     init_opencl();
-    printf("✓ OpenCL ready\n\n");
-    
-    // Create test header
+    printf("OK OpenCL ready\n\n");
+
     uint8_t header[ZCASH_BLOCK_HEADER_LEN] = {0};
     memcpy(header, "test_block_header_data_192_7", 28);
-    
-    printf("Mining with test header: \"test_block_header_data_192_7\"\n");
-    
-    // Mine in batches (limited by 20-bit hash index encoding in Stage 1 attr)
-    uint32_t batch_size = 187000;  // 187K nonces = 374K hashes (safe working limit)
-    uint32_t num_batches = (total_nonces + batch_size - 1) / batch_size;
-    
-    printf("\nProcessing in %u batch(es) of up to %u nonces each\n", num_batches, batch_size);
-    printf("(Beignet driver limitation: max ~1.1M nonces per batch)\n");
-    
+    printf("Test header: \"test_block_header_data_192_7\"\n");
+
     clock_t overall_start = clock();
-    
     int total_solutions = 0;
-    for (uint32_t batch = 0; batch < num_batches; batch++) {
-        uint32_t batch_nonces = (batch == num_batches - 1) ? 
-            (total_nonces - batch * batch_size) : batch_size;
-        uint32_t nonce_start = batch * batch_size;
-        
-        printf("\n═══ Batch %u/%u: nonces %u-%u (%u nonces) ═══\n", 
-               batch + 1, num_batches, nonce_start, nonce_start + batch_nonces - 1, batch_nonces);
-        int solutions = mine_batch(batch_nonces, header, nonce_start, 1);
+
+    for (uint32_t n = 0; n < total_nonces; n++) {
+        printf("\n=== Mining nonce %u/%u ===\n", n + 1, total_nonces);
+        int solutions = mine_batch(n, header, 1);
         total_solutions += solutions;
-        
-        if (solutions > 0) {
-            printf("✅ Found %d valid solution(s) in this batch!\n", solutions);
-        }
-        
-        // Reinitialize OpenCL between batches to work around Beignet driver bug
-        if (batch < num_batches - 1) {
+        if (solutions > 0)
+            printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
+
+        /* Reinit OpenCL between attempts (Beignet stability) */
+        if (n + 1 < total_nonces) {
             cleanup_opencl();
             init_opencl();
         }
     }
-    
-    clock_t overall_end = clock();
-    double total_time = (double)(overall_end - overall_start) / CLOCKS_PER_SEC;
-    
-    printf("\n╔═══════════════════════════════════════════════════════════╗\n");
-    printf("║                    MINING COMPLETE                        ║\n");
-    printf("╚═══════════════════════════════════════════════════════════╝\n\n");
-    
-    printf("Results:\n");
-    printf("  Total nonces processed: %u\n", total_nonces);
-    printf("  Total mining time: %.2f seconds\n", total_time);
-    printf("  Hash rate: %.2f Sol/s\n", total_nonces / total_time);
-    printf("  Valid solutions found: %d\n\n", total_solutions);
-    
-    if (total_solutions > 0) {
-        printf("✅ SUCCESS!\n");
-        printf("   GPU implementation produces VALID Equihash 192,7 solutions!\n");
-        printf("   24-bit collision enforcement is working correctly.\n");
-        printf("   Ready for integration into sa-solver (pool mining).\n\n");
-    } else {
-        printf("⚠️  No valid solutions found\n");
-        if (total_nonces < 1000000) {
-            printf("   Try more nonces (recommended: 1-2M for high probability)\n");
-            printf("   Example: ./sa-tromp 1000000\n\n");
-        } else {
-            printf("   This may indicate an issue with collision detection.\n");
-            printf("   Check GPU kernel implementation.\n\n");
-        }
-    }
-    
+
+    double total_time = (double)(clock() - overall_start) / CLOCKS_PER_SEC;
+    printf("\n=== DONE: %u nonce(s) in %.2fs, %d valid solution(s) ===\n",
+           total_nonces, total_time, total_solutions);
+
     cleanup_opencl();
-    
     return (total_solutions > 0) ? 0 : 1;
 }

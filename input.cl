@@ -1136,599 +1136,337 @@ exit1:
     potential_sol(htabs, sols, collisions >> 32, collisions & 0xffffffff);
 }
 
-/*
-** ============================================================================
-** Tromp-Style Stage 1 Collision Detection (Equihash 192,7)
-** ============================================================================
-** 
-** This kernel implements Tromp's bucket-based collision detection approach
-** for the first stage. It replaces the original silentarmy round-based logic
-** with a simpler bucket + slot design that correctly handles 24-bit collisions.
-**
-** Parameters:
-**   NBUCKETS = 2^20 (1M buckets)
-**   NSLOTS_STAGE1 = 96 slots per bucket
-**   BUCKBITS = 20 (top 20 bits select bucket)
-**   RESTBITS = 4 (bottom 4 bits for collision filtering)
-**   DIGITBITS = 24 (total bits per stage)
-**
-** Input: Round 0 hashes (24 bytes each, from kernel_round0)
-** Output: Stage 1 collision trees + slot counters
-*/
+// =============================================================================
+// Stage slot structures (source-bucket architecture)
+// =============================================================================
 
-#define RESTBITS 4                   // Collision filtering bits
-#define BUCKBITS (24-RESTBITS)       // Bucket selection bits = 20
-#define NBUCKETS_STAGE1 (1<<BUCKBITS) // 1M buckets (2^20)
-#define NSLOTS_STAGE1 64              // Slots per bucket
-#define HASHBYTES_STAGE0 24          // Round 0 hash size (192 bits / 8)
-#define HASHBYTES_STAGE1 21          // Stage 1 hash size (24 - 3 bytes used for bucketing)
-
-// Stage 1 slot structure
+/* Stage 0: raw BLAKE2b output — defined here so Stage 1 kernel can reference it */
 typedef struct {
-    ulong attr;                      // Tree attribution: 25-bit idx0 | (25-bit idx1 << 25)
-    uchar hash[HASHBYTES_STAGE1];    // Remaining hash bytes (21 bytes)
-    uchar pad[3];                    // Padding to 32-byte struct (8+21+3=32)
-} stage1_slot_t;
+    uint  attr;      /* hash index (xi): 0..2^25-1 */
+    uchar hash[24];  /* raw 24-byte hash */
+} stage0_slot_t;
 
-/**
- * kernel_stage1_collisions
- * 
- * Each work-item processes ONE bucket:
- * 1. Scan all Round 0 hashes to find hashes belonging to this bucket
- * 2. Within bucket, find collision pairs (matching 24-bit prefix)
- * 3. Store collision pairs in Stage 1 tree with XOR'd hash
- *
- * Global work size: NBUCKETS_STAGE1 (1M)
- * Local work size: 1 (simple single-threaded per bucket)
- */
-__kernel
-void kernel_stage1_collisions(
-    __global uchar *hashes_round0,      // Input: Round 0 hashes (NHASHES * 24 bytes)
-    __global stage1_slot_t *stage1_tree, // Output: Stage 1 collision trees
-    __global uint *stage1_slot_counts,   // Output: Slot counts per bucket
-    uint nhashes)                        // Number of Round 0 hashes to process
-{
-    uint bucketid = get_global_id(0);
-    
-    if (bucketid >= NBUCKETS_STAGE1)
-        return;
-    
-    // Temporary storage for this bucket's hashes
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    // Step 1: Collect all hashes belonging to this bucket
-    for (uint hidx = 0; hidx < nhashes && bucket_count < NSLOTS_STAGE1; hidx++) {
-        __global uchar *hash = hashes_round0 + hidx * HASHBYTES_STAGE0;
-        
-        // Extract first 24 bits (3 bytes) for bucketing
-        // Bits 0-19: bucket ID
-        // Bits 20-23: RESTBITS for collision filtering
-        uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-        uint hash_bucket = bits24 >> RESTBITS;  // Top 20 bits
-        uint hash_rest = bits24 & ((1 << RESTBITS) - 1);           // Bottom 4 bits
-        
-        if (hash_bucket == bucketid) {
-            bucket_indices[bucket_count] = hidx;
-            bucket_restbits[bucket_count] = hash_rest;
-            bucket_count++;
-        }
-    }
-    
-    // Step 2: Find collisions within bucket (pairs with matching RESTBITS)
-    uint collision_count = 0;
-    __global stage1_slot_t *output_base = stage1_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            // Check if RESTBITS match (indicates 24-bit collision)
-            if (bucket_restbits[i] != bucket_restbits[j])
-                continue;
-            
-            // Found collision! Get the two hashes
-            uint idx0 = bucket_indices[i];
-            uint idx1 = bucket_indices[j];
-            __global uchar *hash0 = hashes_round0 + idx0 * HASHBYTES_STAGE0;
-            __global uchar *hash1 = hashes_round0 + idx1 * HASHBYTES_STAGE0;
-            
-            // Store collision in output
-            __global stage1_slot_t *slot = &output_base[collision_count];
-            
-            // Encode tree attribution for Stage 1: 25-bit idx0 | (25-bit idx1 << 25)
-            // Stored in ulong (64-bit) — no delta, both indices stored directly.
-            // Supports up to 2^25 = 33M hash indices (full Equihash 192,7 range).
-            slot->attr = (ulong)idx0 | ((ulong)idx1 << 25);
-            
-            // XOR the remaining hash bytes (skip first 3 bytes used for bucketing)
-            for (uint b = 0; b < HASHBYTES_STAGE1; b++) {
-                slot->hash[b] = hash0[b + 3] ^ hash1[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    // Store collision count for this bucket
-    stage1_slot_counts[bucketid] = collision_count;
-}
+/* Collision detection constants */
+#define RESTBITS        4
+#define BUCKBITS        (24 - RESTBITS)
+#define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^20 = 1M */
+#define NSLOTS_STAGE1   64
 
-
-// Stage 2-6 slot structures (progressively smaller hashes)
+/* Hash widths at each stage (bytes remaining after XOR cancellation) */
+#define HASHBYTES_STAGE0 24
+#define HASHBYTES_STAGE1 21
 #define HASHBYTES_STAGE2 18
 #define HASHBYTES_STAGE3 15
 #define HASHBYTES_STAGE4 12
-#define HASHBYTES_STAGE5 9
-#define HASHBYTES_STAGE6 6
-#define HASHBYTES_STAGE7 3
+#define HASHBYTES_STAGE5  9
+#define HASHBYTES_STAGE6  6
+#define HASHBYTES_STAGE7  3
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE2];
-} stage2_slot_t;
+/* Stage 1-7 slot structs.
+   attr = (src_bucket << 12) | (slot_i << 6) | slot_j  (20+6+6 = 32 bits)  */
+typedef struct { uint attr; uchar hash[21]; uchar pad[3]; } stage1_slot_t;
+typedef struct { uint attr; uchar hash[18]; } stage2_slot_t;
+typedef struct { uint attr; uchar hash[15]; } stage3_slot_t;
+typedef struct { uint attr; uchar hash[12]; } stage4_slot_t;
+typedef struct { uint attr; uchar hash[9];  } stage5_slot_t;
+typedef struct { uint attr; uchar hash[6];  } stage6_slot_t;
+typedef struct { uint attr; uchar hash[3];  } stage7_slot_t;
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE3];
-} stage3_slot_t;
+// =============================================================================
+// Stage kernels — source-bucket-per-work-item pattern
+//
+// Each work item owns ONE source bucket.  It reads NSLOTS_STAGE1 input slots,
+// finds collision pairs (matching RESTBITS = bottom 4 bits of hash[2]),
+// XORs hashes starting at byte 3, and atomically writes results to the output
+// bucket = top BUCKBITS bits of the XOR'd hash bytes 0-2.
+//
+// attr = (src_bucket << 12) | (slot_i << 6) | slot_j  (uniform, all stages)
+// =============================================================================
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE4];
-} stage4_slot_t;
+/** kernel_stage1_collisions
+ *  Input:  tree0 (stage0_slot_t) — GPU-generated BLAKE2b hashes
+ *  Output: tree1 (stage1_slot_t)
+ */
+__kernel
+void kernel_stage1_collisions(
+    __global stage0_slot_t *tree0,
+    __global uint          *tree0_counts,
+    __global stage1_slot_t *tree1,
+    __global uint          *tree1_counts)
+{
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE5];
-} stage5_slot_t;
+    uint nslots = tree0_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage0_slot_t *in = tree0 + src * NSLOTS_STAGE1;
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE6];
-} stage6_slot_t;
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
 
-typedef struct {
-    uint attr;
-    uchar hash[HASHBYTES_STAGE7];
-} stage7_slot_t;
+            uchar xh[21];
+            for (uint b = 0; b < 21; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
 
-/**
- * kernel_stage2_collisions
- * Stage 2: Process Stage 1 collisions
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree1_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage1_slot_t *out = tree1 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 21; b++)
+                out->hash[b] = xh[b];
+        }
+    }
+}
+
+/** kernel_stage2_collisions
+ *  Input:  tree1 (stage1_slot_t, 21-byte hash)
+ *  Output: tree2 (stage2_slot_t, 18-byte hash)
  */
 __kernel
 void kernel_stage2_collisions(
-    __global stage1_slot_t *stage1_tree,
-    __global uint *stage1_slot_counts,
-    __global stage2_slot_t *stage2_tree,
-    __global uint *stage2_slot_counts)
+    __global stage1_slot_t *tree1,
+    __global uint          *tree1_counts,
+    __global stage2_slot_t *tree2,
+    __global uint          *tree2_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];  // Slot within source bucket
-    __private uint bucket_ids[NSLOTS_STAGE1];      // Which source bucket
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    // Collect Stage 1 collisions belonging to this bucket
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage1_slot_counts[src_bucket];
-        if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage1_slot_t *slots = stage1_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            // Extract first 24 bits from XOR'd hash
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;           // Just slot index
-                bucket_ids[bucket_count] = src_bucket;      // Track source bucket
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree1_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage1_slot_t *in = tree1 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+
+            uchar xh[18];
+            for (uint b = 0; b < 18; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree2_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage2_slot_t *out = tree2 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 18; b++)
+                out->hash[b] = xh[b];
         }
-    }
-    
-    // Find collisions
-    uint collision_count = 0;
-    __global stage2_slot_t *output_base = stage2_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            // Reconstruct full positions to read parent slots
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage1_slot_t *slot0 = &stage1_tree[parent_pos0];
-            __global stage1_slot_t *slot1 = &stage1_tree[parent_pos1];
-            
-            __global stage2_slot_t *out = &output_base[collision_count];
-            
-            // TEMP: Use compact encoding assuming same bucket (will verify assumption)
-            // If bucket_ids[i] != bucket_ids[j], this will produce wrong results
-            // Format: bucket_id(14) | slot0(9) | slot1(9) = 32 bits
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            for (uint b = 0; b < HASHBYTES_STAGE2; b++) {
-                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage2_slot_counts[bucketid] = collision_count;
-    
-    // Debug: Store bucket_count in high buckets to read back
-    if (bucketid < 10) {
-        stage2_slot_counts[NBUCKETS_STAGE1 - 100 + bucketid] = bucket_count;
     }
 }
 
-/**
- * kernel_stage3_collisions
+/** kernel_stage3_collisions
+ *  Input:  tree2 (stage2_slot_t, 18-byte hash)
+ *  Output: tree3 (stage3_slot_t, 15-byte hash)
  */
 __kernel
 void kernel_stage3_collisions(
-    __global stage2_slot_t *stage2_tree,
-    __global uint *stage2_slot_counts,
-    __global stage3_slot_t *stage3_tree,
-    __global uint *stage3_slot_counts)
+    __global stage2_slot_t *tree2,
+    __global uint          *tree2_counts,
+    __global stage3_slot_t *tree3,
+    __global uint          *tree3_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uint bucket_ids[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage2_slot_counts[src_bucket];
-        if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage2_slot_t *slots = stage2_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;
-                bucket_ids[bucket_count] = src_bucket;
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree2_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage2_slot_t *in = tree2 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+
+            uchar xh[15];
+            for (uint b = 0; b < 15; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree3_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage3_slot_t *out = tree3 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 15; b++)
+                out->hash[b] = xh[b];
         }
     }
-    
-    uint collision_count = 0;
-    __global stage3_slot_t *output_base = stage3_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage2_slot_t *slot0 = &stage2_tree[parent_pos0];
-            __global stage2_slot_t *slot1 = &stage2_tree[parent_pos1];
-            
-            __global stage3_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            for (uint b = 0; b < HASHBYTES_STAGE3; b++) {
-                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage3_slot_counts[bucketid] = collision_count;
 }
 
-/**
- * kernel_stage4_collisions
+/** kernel_stage4_collisions
+ *  Input:  tree3 (stage3_slot_t, 15-byte hash)
+ *  Output: tree4 (stage4_slot_t, 12-byte hash)
  */
 __kernel
 void kernel_stage4_collisions(
-    __global stage3_slot_t *stage3_tree,
-    __global uint *stage3_slot_counts,
-    __global stage4_slot_t *stage4_tree,
-    __global uint *stage4_slot_counts)
+    __global stage3_slot_t *tree3,
+    __global uint          *tree3_counts,
+    __global stage4_slot_t *tree4,
+    __global uint          *tree4_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uint bucket_ids[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage3_slot_counts[src_bucket];
-        if (nslots >  NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage3_slot_t *slots = stage3_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;
-                bucket_ids[bucket_count] = src_bucket;
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree3_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage3_slot_t *in = tree3 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+
+            uchar xh[12];
+            for (uint b = 0; b < 12; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree4_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage4_slot_t *out = tree4 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 12; b++)
+                out->hash[b] = xh[b];
         }
     }
-    
-    uint collision_count = 0;
-    __global stage4_slot_t *output_base = stage4_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage3_slot_t *slot0 = &stage3_tree[parent_pos0];
-            __global stage3_slot_t *slot1 = &stage3_tree[parent_pos1];
-            
-            __global stage4_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            for (uint b = 0; b < HASHBYTES_STAGE4; b++) {
-                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage4_slot_counts[bucketid] = collision_count;
 }
 
-/**
- * kernel_stage5_collisions
+/** kernel_stage5_collisions
+ *  Input:  tree4 (stage4_slot_t, 12-byte hash)
+ *  Output: tree5 (stage5_slot_t, 9-byte hash)
  */
 __kernel
 void kernel_stage5_collisions(
-    __global stage4_slot_t *stage4_tree,
-    __global uint *stage4_slot_counts,
-    __global stage5_slot_t *stage5_tree,
-    __global uint *stage5_slot_counts)
+    __global stage4_slot_t *tree4,
+    __global uint          *tree4_counts,
+    __global stage5_slot_t *tree5,
+    __global uint          *tree5_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uint bucket_ids[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage4_slot_counts[src_bucket];
-        if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage4_slot_t *slots = stage4_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;
-                bucket_ids[bucket_count] = src_bucket;
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree4_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage4_slot_t *in = tree4 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+
+            uchar xh[9];
+            for (uint b = 0; b < 9; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree5_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage5_slot_t *out = tree5 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 9; b++)
+                out->hash[b] = xh[b];
         }
     }
-    
-    uint collision_count = 0;
-    __global stage5_slot_t *output_base = stage5_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage4_slot_t *slot0 = &stage4_tree[parent_pos0];
-            __global stage4_slot_t *slot1 = &stage4_tree[parent_pos1];
-            
-            __global stage5_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            for (uint b = 0; b < HASHBYTES_STAGE5; b++) {
-                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage5_slot_counts[bucketid] = collision_count;
 }
 
-/**
- * kernel_stage6_collisions
+/** kernel_stage6_collisions
+ *  Input:  tree5 (stage5_slot_t, 9-byte hash)
+ *  Output: tree6 (stage6_slot_t, 6-byte hash)
  */
 __kernel
 void kernel_stage6_collisions(
-    __global stage5_slot_t *stage5_tree,
-    __global uint *stage5_slot_counts,
-    __global stage6_slot_t *stage6_tree,
-    __global uint *stage6_slot_counts)
+    __global stage5_slot_t *tree5,
+    __global uint          *tree5_counts,
+    __global stage6_slot_t *tree6,
+    __global uint          *tree6_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uint bucket_ids[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage5_slot_counts[src_bucket];
-        if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage5_slot_t *slots = stage5_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;
-                bucket_ids[bucket_count] = src_bucket;
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree5_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage5_slot_t *in = tree5 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+
+            uchar xh[6];
+            for (uint b = 0; b < 6; b++)
+                xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
+            uint ob = bits24 >> RESTBITS;
+            uint sl = atomic_inc(&tree6_counts[ob]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage6_slot_t *out = tree6 + ob * NSLOTS_STAGE1 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            for (uint b = 0; b < 6; b++)
+                out->hash[b] = xh[b];
         }
     }
-    
-    uint collision_count = 0;
-    __global stage6_slot_t *output_base = stage6_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage5_slot_t *slot0 = &stage5_tree[parent_pos0];
-            __global stage5_slot_t *slot1 = &stage5_tree[parent_pos1];
-            
-            __global stage6_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            for (uint b = 0; b < HASHBYTES_STAGE6; b++) {
-                out->hash[b] = slot0->hash[b + 3] ^ slot1->hash[b + 3];
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage6_slot_counts[bucketid] = collision_count;
 }
 
-/**
- * kernel_stage7_collisions
- * Final stage - produces solution candidates
+/** kernel_stage7_collisions
+ *  Input:  tree6 (stage6_slot_t, 6-byte hash)
+ *  Output: tree7 (stage7_slot_t) — valid solutions only
+ *  A valid solution requires matching restbits AND bytes 3-5 XOR = 000.
+ *  All solutions route to bucket 0 (XOR of last 3 bytes = 0 → top bits = 0).
  */
 __kernel
 void kernel_stage7_collisions(
-    __global stage6_slot_t *stage6_tree,
-    __global uint *stage6_slot_counts,
-    __global stage7_slot_t *stage7_tree,
-    __global uint *stage7_slot_counts)
+    __global stage6_slot_t *tree6,
+    __global uint          *tree6_counts,
+    __global stage7_slot_t *tree7,
+    __global uint          *tree7_counts)
 {
-    uint bucketid = get_global_id(0);
-    if (bucketid >= NBUCKETS_STAGE1) return;
-    
-    __private uint bucket_indices[NSLOTS_STAGE1];
-    __private uint bucket_ids[NSLOTS_STAGE1];
-    __private uchar bucket_restbits[NSLOTS_STAGE1];
-    __private uint bucket_count = 0;
-    
-    for (uint src_bucket = 0; src_bucket < NBUCKETS_STAGE1; src_bucket++) {
-        uint nslots = stage6_slot_counts[src_bucket];
-        if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
-        
-        __global stage6_slot_t *slots = stage6_tree + src_bucket * NSLOTS_STAGE1;
-        
-        for (uint s = 0; s < nslots && bucket_count < NSLOTS_STAGE1; s++) {
-            __global uchar *hash = slots[s].hash;
-            
-            uint bits24 = ((uint)hash[0] << 16) | ((uint)hash[1] << 8) | ((uint)hash[2]);
-            uint hash_bucket = bits24 >> RESTBITS;
-            uint hash_rest = bits24 & ((1 << RESTBITS) - 1);
-            
-            if (hash_bucket == bucketid) {
-                bucket_indices[bucket_count] = s;
-                bucket_ids[bucket_count] = src_bucket;
-                bucket_restbits[bucket_count] = hash_rest;
-                bucket_count++;
-            }
+    uint src = get_global_id(0);
+    if (src >= NBUCKETS_STAGE1) return;
+
+    uint nslots = tree6_counts[src];
+    if (nslots > NSLOTS_STAGE1) nslots = NSLOTS_STAGE1;
+    __global stage6_slot_t *in = tree6 + src * NSLOTS_STAGE1;
+
+    for (uint i = 0; i < nslots; i++) {
+        uint ri = in[i].hash[2] & ((1u << RESTBITS) - 1u);
+        for (uint j = i + 1; j < nslots; j++) {
+            if ((in[j].hash[2] & ((1u << RESTBITS) - 1u)) != ri) continue;
+            /* Final check: remaining 3 bytes must XOR to zero */
+            if ((in[i].hash[3] ^ in[j].hash[3]) != 0) continue;
+            if ((in[i].hash[4] ^ in[j].hash[4]) != 0) continue;
+            if ((in[i].hash[5] ^ in[j].hash[5]) != 0) continue;
+
+            /* Valid Equihash solution pair — store in bucket 0 */
+            uint sl = atomic_inc(&tree7_counts[0]);
+            if (sl >= NSLOTS_STAGE1) continue;
+
+            __global stage7_slot_t *out = tree7 + sl;
+            out->attr = (src << 12) | (i << 6) | j;
+            out->hash[0] = out->hash[1] = out->hash[2] = 0;
         }
     }
-    
-    uint collision_count = 0;
-    __global stage7_slot_t *output_base = stage7_tree + bucketid * NSLOTS_STAGE1;
-    
-    for (uint i = 0; i < bucket_count && collision_count < NSLOTS_STAGE1; i++) {
-        for (uint j = i + 1; j < bucket_count && collision_count < NSLOTS_STAGE1; j++) {
-            if (bucket_restbits[i] != bucket_restbits[j]) continue;
-            
-            uint parent_pos0 = bucket_ids[i] * NSLOTS_STAGE1 + bucket_indices[i];
-            uint parent_pos1 = bucket_ids[j] * NSLOTS_STAGE1 + bucket_indices[j];
-            
-            __global stage6_slot_t *slot0 = &stage6_tree[parent_pos0];
-            __global stage6_slot_t *slot1 = &stage6_tree[parent_pos1];
-            
-            // Final stage: verify remaining 3 bytes XOR to zero
-            bool is_zero = true;
-            for (uint b = 0; b < HASHBYTES_STAGE7; b++) {
-                if ((slot0->hash[b + 3] ^ slot1->hash[b + 3]) != 0) {
-                    is_zero = false;
-                    break;
-                }
-            }
-            
-            if (!is_zero) continue;  // Not a valid solution
-            
-            __global stage7_slot_t *out = &output_base[collision_count];
-            out->attr = (bucket_ids[i] << 12) | (bucket_indices[i] << 6) | bucket_indices[j];
-            
-            // Final hash should be all zeros
-            for (uint b = 0; b < HASHBYTES_STAGE7; b++) {
-                out->hash[b] = 0;
-            }
-            
-            collision_count++;
-        }
-    }
-    
-    stage7_slot_counts[bucketid] = collision_count;
 }
 
 // =============================================================================
 // Stage 0: GPU hash generation (replaces CPU generate_round0_hashes)
 // =============================================================================
-
-typedef struct {
-    uint  attr;      /* hash index 0..2^25-1 */
-    uchar hash[24];  /* raw 24-byte Blake2b output segment */
-} stage0_slot_t;
+/* stage0_slot_t is defined above (line ~1144) — no redefinition here */
 
 /**
  * kernel_round0_gen
