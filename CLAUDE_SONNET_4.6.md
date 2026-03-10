@@ -86,8 +86,10 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 - [x] Step A: Edit sa-tromp.c NSLOTS 64→48 (done)
 - [x] Step A: Edit input.cl NSLOTS_STAGE1 64→48 (done)
 - [x] ./sa-tromp 1 with NSLOTS=48 → OOM (99 MB free observed)
-- [ ] **Step A: Edit sa-tromp.c + input.cl NSLOTS 48→40** ← DOING NOW
-- [ ] Step A: make clean && make sa-tromp && ./sa-tromp 1
+- [x] Step A: NSLOTS 48→40 applied + rebuilt (e3f1347)
+- [x] Step A: ./sa-tromp 1 → tree0 32.0/bucket, Stage 7 942 candidates, 1.38s, NO OOM
+- [ ] **Step B: Rewrite solution_extraction.c** ← DOING NOW
+- [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
 - [ ] Step B: Rewrite solution_extraction.c (uint32 attr, new BUCKBITS/NSLOTS)
 - [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
 
