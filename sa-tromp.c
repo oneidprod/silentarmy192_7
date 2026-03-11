@@ -268,8 +268,11 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  *          batches.  Tree buffers are allocated/freed progressively to fit
  *          within the ~5.8 GB shared memory budget.
  *
- * NOTE: solution extraction is deferred to Step 5.
+ * NOTE: solution extraction via mine_batch_extract() (defined below).
  */
+static int mine_batch_extract(uint32_t nonce_idx, uint8_t *header,
+                               stage7_slot_t *cands, uint32_t ncands); /* forward decl */
+
 int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     cl_int err;
     /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
@@ -495,15 +498,8 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clEnqueueReadBuffer(queue, curr, CL_TRUE,
                                     0, nsol * sizeof(stage7_slot_t),
                                     cands, 0, NULL, NULL);
-                fprintf(stderr, "MB_P3 %u candidates: TODO extract (need rerun)\n", nsol);
-                /* TODO: call mine_batch_extract(nonce_idx, header, cands, nsol)
-                 * which re-runs the cascade keeping attrs, then verifies solutions.
-                 * For now: log candidates so we know the pipeline reaches Stage 7. */
-                for (uint32_t s = 0; s < nsol; s++) {
-                    printf("  [candidate %u] attr=0x%08x hash=%02x%02x%02x\n",
-                           s, cands[s].attr, cands[s].hash[0],
-                           cands[s].hash[1], cands[s].hash[2]);
-                }
+                printf("  [Stage 7] %u candidate(s) in bucket 0 — running extraction rerun\n", nsol);
+                valid_solutions += mine_batch_extract(nonce_idx, header, cands, nsol);
                 free(cands);
             }
         }
@@ -513,6 +509,18 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
     return valid_solutions;
 }
+/* mine_batch_extract: STUB — rerun approach crashed SSH (OOM + GPU overload).
+ * TODO: redesign to save attrs DURING lean cascade with NSLOTS=24.
+ * See PLAN_ACTIVE.md for correct implementation.
+ */
+static int mine_batch_extract(uint32_t nonce_idx, uint8_t *header,
+                               stage7_slot_t *cands, uint32_t ncands)
+{
+    (void)nonce_idx; (void)header; (void)cands; (void)ncands;
+    fprintf(stderr, "EXTRACT: stub — not yet implemented (see PLAN_ACTIVE.md)\n"); fflush(stderr);
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     fprintf(stderr, "A\n"); fflush(stderr);
     uint32_t total_nonces = 100000;

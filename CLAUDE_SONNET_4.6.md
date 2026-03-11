@@ -78,64 +78,30 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#1  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
 
-### Current State (2026-03-11, end of session)
-- Last commit: 42a87f7 — pipeline completes without OOM
-- `./sa-tromp 1` runs end-to-end in 1.85s, NSLOTS=40, no OOM
-- Stage 7: 942 total candidates, 40 in bucket 0 (bucket full = overflow)
-- Solution extraction NOT YET IMPLEMENTED (removed cpu_attrs approach, need rerun design)
+### Current State (2026-03-11, end of session 2)
+- Last commit: (see git log)
+- `./sa-tromp 1` runs 1.85s, NSLOTS=40, Stage 7: 942 candidates, 40 in bucket 0
+- `mine_batch_extract()` is a **safe stub** (prints message, returns 0 — does NOT crash)
+- Cascade counts 32M→31M→29M→26M→20M→12M→942 are **mathematically correct** (not a bug)
 
-### What Was Fixed This Session
-- **OOM root cause**: cpu_attrs[0..6] (7×160MB=1.1GB) accumulated during cascade while GPU kernels ran → Beignet killed process
-- **Fix**: removed all cpu_attrs readbacks from cascade loop entirely
-- **Stage 7 watchdog**: reduced DISPATCH from 1<<18 to 1<<16 (DISPATCH/4) for Stage 7 kernel — O(NSLOTS²) per WI needs smaller batches
+### What crashed SSH this session
+Attempted `mine_batch_extract()` rerun approach: ran full cascade twice back-to-back.
+GPU + RAM overloaded → SSH server killed. Reverted to safe stub.
 
-### NEXT STEP: Implement Solution Extraction (Rerun Design)
-The cpu_attrs approach is broken (OOM). New design:
+### NEXT STEP: Implement extraction INSIDE mine_batch() (no rerun)
+See PLAN_ACTIVE.md for full step-by-step implementation with exact code snippets.
+Summary: save attrs during the lean cascade (step 2-3 in the stage loop), then extract after stage 7.
+Memory budget: 3.7GB worst case — safe with 5.4GB available.
 
-**Option A — Rerun on solution nonces (recommended)**:
-1. Cascade runs lean (no cpu_attrs) → Stage 7 count
-2. If count > 0: call `mine_batch_extract(header, nonce_idx, cand_attrs[], ncands)`
-3. `mine_batch_extract` re-runs cascade, this time saving attrs (only ~8s rerun, rare)
-4. Calls `extract_solution()` + `verify_equihash_full()` for each candidate
-
-**Important observations for next session**:
-- Stage 7 bucket 0 has 40 candidates but ALL 40 NSLOTS are filled — this means the bucket overflowed and only the first 40 pairs are stored. Real solution may be among them or may have been dropped.
-- Stage 1-6 collision counts grow instead of shrink (32M→31M→29M→26M→20M→12M) — this is wrong. Expected: each stage should cut count by ~16x. The cascade is not narrowing properly, suggesting the RESTBITS/bucket XOR matching has a bug.
-- With 74K overflow buckets at Stage 0 (max slot count 66 vs NSLOTS=40), significant data is lost.
-
-### Sub-task checklist for next session:
-- [x] Build: `make clean && rm -f _kernel.h && make sa-tromp`
-- [x] NSLOTS=40 pipeline runs without OOM (1.85s)
-- [x] Stage 7: 942 candidates found
-- [ ] **NEXT**: Investigate why Stage 1-6 counts don't narrow (expected ~16x reduction per stage)
-- [ ] **THEN**: Implement mine_batch_extract() rerun for candidate nonces
-- [ ] **THEN**: `./sa-tromp 100` → verify ≥1 valid solution
-
-### Memory Root Cause (MUST FIX FIRST):
-System: 7.6 GB total, 1.9 GB used, 5.4 GB available (from `free -h`)
-Peak at Stage 1 = tree0(1.75GB) + tree1(1.75GB) = **3.5 GB** → total 5.4 GB → OOM
-
-### Fix (2-line change, do this before running):
-- `input.cl` line 1153: `#define NSLOTS_STAGE1 64` → **`48`**
-- `sa-tromp.c` line 35: `#define NSLOTS 64` → **`48`**
-
-With NSLOTS=48: peak = 2 × 1M × 48 × 28B = 2.69 GB → total 4.59 GB → 0.81 GB margin ✓
-Overflow risk: ~0.2% per bucket, ~1.4% solution loss across 7 stages — acceptable.
-SLOTBITS stays 6 (6 bits ≥ log2(48), attr encoding unchanged).
-
-### After fix, run:
-```
-make clean && rm -f _kernel.h && make sa-tromp && ./sa-tromp 1
-```
-Expected: tree0 ~32/bucket avg, Stage 1 ~32 collisions/bucket, no OOM
-
-### Step 5 (after Stage 1 confirmed):
-Rewrite solution_extraction.c — see PLAN_ACTIVE.md Part B for full details.
-Key bugs: stage1_slot_t.attr is uint64_t (should be uint32_t), attr decoding uses old 14-bit/9-bit widths (should be 20-bit/6-bit), stride=512 (should be 48).
-
-(Steps 3-5 of kernel_round0 plan must complete before pool testing can resume)
+### Sub-task checklist:
+- [x] Pipeline runs 1.85s without OOM
+- [x] Stage 7: 942 candidates
+- [x] Cascade counts confirmed mathematically correct (no bug to fix)
+- [ ] **NEXT**: Add cpu_attrs readback inside mine_batch() stage loop (see PLAN_ACTIVE.md)
+- [ ] **THEN**: `./sa-tromp 1` → extraction fires, check for valid solutions
+- [ ] **THEN**: `./sa-tromp 50` → find ≥1 verified solution
 
 ## Completed Steps
 | # | Date | Commit | Description |
