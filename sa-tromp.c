@@ -270,14 +270,13 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  *
  * NOTE: solution extraction via mine_batch_extract() (defined below).
  */
-static int mine_batch_extract(uint32_t nonce_idx, uint8_t *header,
-                               stage7_slot_t *cands, uint32_t ncands); /* forward decl */
-
 int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     cl_int err;
     /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
     const size_t DISPATCH = (size_t)(1 << 18);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
+    uint32_t *cpu_attrs[8] = {NULL};
+    const size_t _slot_sz[8] = {28,28,22,19,16,13,10,7};
 
     fprintf(stderr, "MB1 nonce=%u tree_size=%zu\n", nonce_idx, tree_size); fflush(stderr);
     if (show_progress)
@@ -332,6 +331,15 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             if (base == 0) { fprintf(stderr, "MB6b first dispatch done\n"); fflush(stderr); }
         }
         fprintf(stderr, "MB6c all dispatches done\n"); fflush(stderr);
+        {
+            size_t gsz = tree_size * _slot_sz[0];
+            void *tmp = malloc(gsz);
+            clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+            cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
+            for (size_t k = 0; k < tree_size; k++)
+                cpu_attrs[0][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[0]);
+            free(tmp);
+        }
         clReleaseMemObject(buf_blake_st);
         fprintf(stderr, "MB7 released blake_st\n"); fflush(stderr);
 
@@ -396,6 +404,15 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             fprintf(stderr, "MB15b stage1 batch done base=%zu\n", base); fflush(stderr);
         }
         fprintf(stderr, "MB16 stage1 all done\n"); fflush(stderr);
+        {
+            size_t gsz = tree_size * _slot_sz[1];
+            void *tmp = malloc(gsz);
+            clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+            cpu_attrs[1] = malloc(tree_size * sizeof(uint32_t));
+            for (size_t k = 0; k < tree_size; k++)
+                cpu_attrs[1][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[1]);
+            free(tmp);
+        }
         /* tree0 no longer needed (cpu_attrs[0] was saved before tree1 alloc) */
         clReleaseMemObject(buf_tree0);
         clReleaseMemObject(buf_t0_cnt);
@@ -462,6 +479,15 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             }
             fprintf(stderr, "MB_S%d kernel done\n", s); fflush(stderr);
 
+            {
+                size_t gsz = tree_size * _slot_sz[s];
+                void *tmp = malloc(gsz);
+                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+                cpu_attrs[s] = malloc(tree_size * sizeof(uint32_t));
+                for (size_t k = 0; k < tree_size; k++)
+                    cpu_attrs[s][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[s]);
+                free(tmp);
+            }
             clReleaseMemObject(prev);
             prev = curr;
 
@@ -492,35 +518,29 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
 
         if (nsol > 0) {
-            /* Read tree7 bucket 0 slots (all candidates in bucket 0) */
-            stage7_slot_t *cands = malloc(nsol * sizeof(stage7_slot_t));
-            if (cands) {
-                clEnqueueReadBuffer(queue, curr, CL_TRUE,
-                                    0, nsol * sizeof(stage7_slot_t),
-                                    cands, 0, NULL, NULL);
-                printf("  [Stage 7] %u candidate(s) in bucket 0 — running extraction rerun\n", nsol);
-                valid_solutions += mine_batch_extract(nonce_idx, header, cands, nsol);
-                free(cands);
+            printf("  [Stage 7] %u candidate(s) — extracting...\n", nsol);
+            uint32_t tree_sz = (uint32_t)tree_size;
+            for (uint32_t s = 0; s < nsol && s < NSLOTS; s++) {
+                uint32_t indices[PROOFSIZE];
+                if (extract_solution(cpu_attrs, s, indices, tree_sz)) {
+                    printf("  SOLUTION nonce=%u:", nonce_idx);
+                    for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
+                    printf("\n");
+                    if (verify_equihash_full(indices, header, 0))
+                        printf("  VERIFIED OK\n");
+                    else
+                        printf("  VERIFY FAILED\n");
+                    valid_solutions++;
+                }
             }
         }
         clReleaseMemObject(curr);
     }
 
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
+    for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
     return valid_solutions;
 }
-/* mine_batch_extract: STUB — rerun approach crashed SSH (OOM + GPU overload).
- * TODO: redesign to save attrs DURING lean cascade with NSLOTS=24.
- * See PLAN_ACTIVE.md for correct implementation.
- */
-static int mine_batch_extract(uint32_t nonce_idx, uint8_t *header,
-                               stage7_slot_t *cands, uint32_t ncands)
-{
-    (void)nonce_idx; (void)header; (void)cands; (void)ncands;
-    fprintf(stderr, "EXTRACT: stub — not yet implemented (see PLAN_ACTIVE.md)\n"); fflush(stderr);
-    return 0;
-}
-
 int main(int argc, char *argv[]) {
     fprintf(stderr, "A\n"); fflush(stderr);
     uint32_t total_nonces = 100000;
