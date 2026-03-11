@@ -88,8 +88,28 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 - [x] ./sa-tromp 1 with NSLOTS=48 → OOM (99 MB free observed)
 - [x] Step A: NSLOTS 48→40 applied + rebuilt (e3f1347)
 - [x] Step A: ./sa-tromp 1 → tree0 32.0/bucket, Stage 7 942 candidates, 1.38s, NO OOM
-- [ ] **Step B: Rewrite solution_extraction.c** ← DOING NOW
-- [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
+- [x] Step B: solution_extraction.c rewritten (commit TBD) — new uint32 attr, flat_idx_of, listindices, extract_solution
+- [x] Step B: mine_batch() wired — cpu_attrs[8] collected via 64MB chunked reads before each tree release
+- [ ] **BLOCKED: ./sa-tromp 1 killed (exit 137) before first printf** ← FIX THIS NEXT
+
+### Current Bug: Killed Before First Printf
+- Binary runs fine: `./sa-tromp --help` works
+- `./sa-tromp 1` is killed with exit code 137 (SIGKILL from OOM) before main() first printf
+- Stale sa-tromp process was running when bug appeared — may be Beignet GPU memory not fully released
+- Root cause: likely Beignet OpenCL driver initialization allocates too much memory on startup
+- Memory at start: 6.2 GB available, but Beignet JIT + GPU init might exhaust it
+
+### Next Debug Steps:
+1. Check dmesg for OOM killer output: `dmesg | grep -i "oom\|killed" | tail -20`
+2. Check if Beignet init itself is OOMing: add printf BEFORE init_opencl() call
+3. If Beignet init OOMs: reduce GPU memory usage OR look at swap (1.1-1.5 GB used = heap fragmentation)
+4. Fallback: reduce NSLOTS to 32 (more overflow, but less memory)
+
+### What Was Done This Session:
+- Commits: e3f1347 (NSLOTS=40), 140aa52 (pipeline verified)
+- solution_extraction.c: FULLY REWRITTEN (flat_idx_of, listindices, extract_solution)
+- sa-tromp.c mine_batch(): cpu_attrs[8] collection + Stage 7 extraction loop
+- Changes NOT yet committed (uncommitted edits to sa-tromp.c and solution_extraction.c)
 - [ ] Step B: Rewrite solution_extraction.c (uint32 attr, new BUCKBITS/NSLOTS)
 - [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
 

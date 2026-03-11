@@ -276,6 +276,10 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     const size_t DISPATCH = (size_t)(1 << 18);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
 
+    /* cpu_attrs[r] = flat uint32_t array of attrs for tree r (r=0..7).
+     * Populated progressively before each GPU tree is released. */
+    uint32_t *cpu_attrs[8] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+
     if (show_progress)
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
@@ -381,6 +385,25 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             check_error(err, "stage1");
             clFinish(queue);
         }
+        /* Save tree0 attrs in 64 MB chunks (avoids large single malloc) */
+        {
+            const size_t stride = sizeof(stage0_slot_t);
+            const size_t chunk_slots = (64u << 20) / stride;
+            char *tmp = malloc(chunk_slots * stride);
+            cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
+            if (tmp && cpu_attrs[0]) {
+                for (size_t off = 0; off < tree_size; off += chunk_slots) {
+                    size_t n = tree_size - off;
+                    if (n > chunk_slots) n = chunk_slots;
+                    clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE,
+                                        off * stride, n * stride,
+                                        tmp, 0, NULL, NULL);
+                    for (size_t k = 0; k < n; k++)
+                        cpu_attrs[0][off + k] = *(uint32_t *)(tmp + k * stride);
+                }
+            }
+            free(tmp);
+        }
         /* tree0 no longer needed */
         clReleaseMemObject(buf_tree0);
         clReleaseMemObject(buf_t0_cnt);
@@ -440,6 +463,25 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clFinish(queue);
             }
 
+            /* Save tree_{s-1} attrs in 64 MB chunks before releasing */
+            {
+                size_t stride = slot_sz[s-1];
+                size_t chunk_slots = (64u << 20) / stride;
+                char *tmp = malloc(chunk_slots * stride);
+                cpu_attrs[s-1] = malloc(tree_size * sizeof(uint32_t));
+                if (tmp && cpu_attrs[s-1]) {
+                    for (size_t off = 0; off < tree_size; off += chunk_slots) {
+                        size_t n = tree_size - off;
+                        if (n > chunk_slots) n = chunk_slots;
+                        clEnqueueReadBuffer(queue, prev, CL_TRUE,
+                                            off * stride, n * stride,
+                                            tmp, 0, NULL, NULL);
+                        for (size_t k = 0; k < n; k++)
+                            cpu_attrs[s-1][off + k] = *(uint32_t *)(tmp + k * stride);
+                    }
+                }
+                free(tmp);
+            }
             clReleaseMemObject(prev);
             prev = curr;
 
@@ -455,10 +497,60 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         free(cnt);
     }
 
-    /* curr = tree7.  TODO Step 5: solution extraction and verification. */
-    if (curr) clReleaseMemObject(curr);
+    /* ── Phase 3: Solution extraction and verification ───────────────────── */
+    int valid_solutions = 0;
+
+    if (curr) {
+        /* Read tree7 fully to CPU (all solutions are in bucket 0, flat 0..N-1) */
+        size_t t7sz = tree_size * slot_sz[7];
+        stage7_slot_t *cpu_tree7 = malloc(t7sz);
+        uint32_t *cnt7 = calloc(NBUCKETS, sizeof(uint32_t));
+        if (cpu_tree7 && cnt7) {
+            clEnqueueReadBuffer(queue, curr, CL_TRUE, 0,
+                                t7sz, cpu_tree7, 0, NULL, NULL);
+            clEnqueueReadBuffer(queue, buf_counts[6], CL_TRUE, 0,
+                                NBUCKETS * sizeof(uint32_t), cnt7, 0, NULL, NULL);
+
+            /* Populate cpu_attrs[7] from tree7 slots */
+            cpu_attrs[7] = malloc(tree_size * sizeof(uint32_t));
+            if (cpu_attrs[7])
+                for (size_t k = 0; k < tree_size; k++)
+                    cpu_attrs[7][k] = cpu_tree7[k].attr;
+
+            /* Stage 7 writes all solutions to bucket 0 only.
+             * Scan bucket 0 slots 0..min(cnt7[0]-1, NSLOTS-1). */
+            uint32_t nsol = cnt7[0];
+            if (nsol > NSLOTS) nsol = NSLOTS;
+
+            if (show_progress)
+                printf("  Extracting from %u Stage-7 candidates...\n", nsol);
+
+            uint32_t solution_indices[PROOFSIZE];
+            for (uint32_t s = 0; s < nsol; s++) {
+                uint32_t flat7 = s; /* bucket 0, slot s → flat = 0*NSLOTS + s */
+                /* All tree7 hashes should be 0 (checked by GPU kernel) */
+                if (!extract_solution(cpu_attrs, flat7, solution_indices,
+                                      (uint32_t)tree_size))
+                    continue;
+
+                if (verify_equihash_full(solution_indices, header, 0)) {
+                    valid_solutions++;
+                    printf("\n✅ VALID SOLUTION #%d FOUND! (nonce %u, candidate %u)\n",
+                           valid_solutions, nonce_idx, s);
+                } else {
+                    /* unexpected: GPU verified but CPU didn't — log for debugging */
+                    printf("  [warn] candidate %u: extract OK but verify FAILED\n", s);
+                }
+            }
+        }
+        free(cpu_tree7);
+        free(cnt7);
+        clReleaseMemObject(curr);
+    }
+
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
-    return 0;  /* TODO Step 5: return valid_solutions */
+    for (int i = 0; i < 8; i++) { free(cpu_attrs[i]); cpu_attrs[i] = NULL; }
+    return valid_solutions;
 }
 int main(int argc, char *argv[]) {
     uint32_t total_nonces = 100000;  // Default: 100K nonces

@@ -1,6 +1,30 @@
-# Plan: Resume — NSLOTS Fix + Solution Extraction
+# Plan: Resume — Fix OOM-at-startup + Verify Solutions
 
-## Context
+## CURRENT STATE (2026-03-11)
+
+Steps A and B code are done. Blocked on exit-137 before first printf.
+
+### Commits this session:
+- e3f1347: NSLOTS 48→40
+- 140aa52: pipeline verified (Stage 7: 942 candidates, 1.38s, no OOM)
+
+### Uncommitted changes (in sa-tromp.c + solution_extraction.c):
+- solution_extraction.c: full rewrite (flat_idx_of, listindices, extract_solution, flat uint32 attrs)
+- sa-tromp.c: cpu_attrs[8] collected via 64MB chunks before each release; Stage 7 extraction loop
+
+### Current blocker: `./sa-tromp 1` killed (exit 137, SIGKILL) before first printf
+`./sa-tromp --help` works. Init_opencl() suspect. Possible Beignet heap leak from prior session.
+
+### Debug + fix plan:
+1. `dmesg | grep -i "oom\|killed" | tail -20` → confirm OOM killer
+2. `git stash` → revert to last working binary → test: `./sa-tromp 1` → if it works, the extraction code changes themselves cause OOM at init
+3. Or: add `printf("A\n"); fflush(stdout);` BEFORE `init_opencl()`, rebuild, rerun → see if "A" prints
+4. If Beignet init OOMs: `sudo swapoff -a && sudo swapon -a` clears swap, then retry
+5. If still OOM: reduce NSLOTS to 32 or investigate Beignet driver memory leak
+
+---
+
+## OLD CONTEXT (kept for reference):
 
 Architecture is complete through commit ad11e0d. The pipeline (kernel_round0_gen → Stage 1-7) is implemented. Two blocking issues remain before valid solutions can be found:
 
