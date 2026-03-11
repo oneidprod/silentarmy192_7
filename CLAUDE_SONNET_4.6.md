@@ -78,30 +78,37 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#1  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#3  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
 
 ### Current State (2026-03-11, end of session 2)
-- Last commit: (see git log)
-- `./sa-tromp 1` runs 1.85s, NSLOTS=40, Stage 7: 942 candidates, 40 in bucket 0
-- `mine_batch_extract()` is a **safe stub** (prints message, returns 0 — does NOT crash)
-- Cascade counts 32M→31M→29M→26M→20M→12M→942 are **mathematically correct** (not a bug)
+- Uncommitted changes: `_slot_sz` fix + doc updates (committing now)
+- Pipeline: double-buffer ping-pong, NSLOTS=40, Stage 7: ~942 candidates
+- Extraction fully implemented in mine_batch() — no rerun, no stub
 
-### What crashed SSH this session
-Attempted `mine_batch_extract()` rerun approach: ran full cascade twice back-to-back.
-GPU + RAM overloaded → SSH server killed. Reverted to safe stub.
+### Session 2 Summary
+1. Implemented full cpu_attrs readback inside mine_batch()
+2. Fixed OOM: double-buffer ping-pong (only buf_tree0+buf_tree1 allocated)
+3. Fixed nonce variation: nonce_idx mixed into blake2b state
+4. Fixed Stage 7 coverage: cap changed from NSLOTS=40 to 65536 in kernel
+5. Identified + fixed duplicate leaf bug: `_slot_sz` packed→Beignet padded sizes
 
-### NEXT STEP: Implement extraction INSIDE mine_batch() (no rerun)
-See PLAN_ACTIVE.md for full step-by-step implementation with exact code snippets.
-Summary: save attrs during the lean cascade (step 2-3 in the stage loop), then extract after stage 7.
-Memory budget: 3.7GB worst case — safe with 5.4GB available.
+### _slot_sz fix (applied, built clean, NOT YET TESTED)
+```c
+// sa-tromp.c line 282
+const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};
+// was: {28,28,22,19,16,13,10,7} — Beignet pads to 4-byte alignment
+```
 
 ### Sub-task checklist:
-- [x] Pipeline runs 1.85s without OOM
-- [x] Stage 7: 942 candidates
-- [x] Cascade counts confirmed mathematically correct (no bug to fix)
-- [ ] **NEXT**: Add cpu_attrs readback inside mine_batch() stage loop (see PLAN_ACTIVE.md)
-- [ ] **THEN**: `./sa-tromp 1` → extraction fires, check for valid solutions
+- [x] Pipeline runs without OOM (double-buffer)
+- [x] Nonce variation working
+- [x] Stage 7: ~942 candidates (all written, not capped at 40)
+- [x] cpu_attrs readback for all 8 stages
+- [x] extraction loop in mine_batch()
+- [x] _slot_sz Beignet padding fix applied and built
+- [ ] **NEXT**: `./sa-tromp 1` → verify extraction finds valid solutions
 - [ ] **THEN**: `./sa-tromp 50` → find ≥1 verified solution
+- [ ] **THEN**: commit + pool testing
 
 ## Completed Steps
 | # | Date | Commit | Description |

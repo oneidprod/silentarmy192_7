@@ -1454,7 +1454,7 @@ void kernel_stage7_collisions(
 
             /* Valid Equihash solution pair — store in bucket 0 */
             uint sl = atomic_inc(&tree7_counts[0]);
-            if (sl >= NSLOTS_STAGE1) continue;
+            if (sl >= 65536) continue;  /* generous cap: 65536 stage7 candidates max */
 
             __global stage7_slot_t *out = tree7 + sl;
             out->attr = (src << 12) | (i << 6) | j;

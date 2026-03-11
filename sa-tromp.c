@@ -276,7 +276,10 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     const size_t DISPATCH = (size_t)(1 << 18);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
     uint32_t *cpu_attrs[8] = {NULL};
-    const size_t _slot_sz[8] = {28,28,22,19,16,13,10,7};
+    /* GPU slot sizes with 4-byte alignment padding (matches Beignet OpenCL C sizeof).
+     * Stages 2,3,5,6,7 have uchar hash[] that doesn't fill to 4-byte boundary,
+     * so Beignet adds tail padding. */
+    const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};
 
     fprintf(stderr, "MB1 nonce=%u tree_size=%zu\n", nonce_idx, tree_size); fflush(stderr);
     if (show_progress)
@@ -286,6 +289,8 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     blake2b_state_t blake_gen;
     zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
     zcash_blake2b_update(&blake_gen, header, 128, 0);
+    /* Mix in nonce_idx so each mining attempt uses different hashes */
+    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
     fprintf(stderr, "MB2 blake init done\n"); fflush(stderr);
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -332,12 +337,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         }
         fprintf(stderr, "MB6c all dispatches done\n"); fflush(stderr);
         {
-            size_t gsz = tree_size * _slot_sz[0];
-            void *tmp = malloc(gsz);
-            clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+            /* Read attrs from tree0. Use ReadBuffer (more reliable than Map on Beignet). */
+            size_t ssz = _slot_sz[0];
+            size_t total_bytes = tree_size * ssz;
             cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
+            char *tmp = malloc(total_bytes);
+            clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
             for (size_t k = 0; k < tree_size; k++)
-                cpu_attrs[0][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[0]);
+                cpu_attrs[0][k] = *(uint32_t *)(tmp + k * ssz);
             free(tmp);
         }
         clReleaseMemObject(buf_blake_st);
@@ -405,16 +412,16 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         }
         fprintf(stderr, "MB16 stage1 all done\n"); fflush(stderr);
         {
-            size_t gsz = tree_size * _slot_sz[1];
-            void *tmp = malloc(gsz);
-            clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+            size_t ssz = _slot_sz[1];
+            size_t total_bytes = tree_size * ssz;
             cpu_attrs[1] = malloc(tree_size * sizeof(uint32_t));
+            char *tmp = malloc(total_bytes);
+            clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
             for (size_t k = 0; k < tree_size; k++)
-                cpu_attrs[1][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[1]);
+                cpu_attrs[1][k] = *(uint32_t *)(tmp + k * ssz);
             free(tmp);
         }
-        /* tree0 no longer needed (cpu_attrs[0] was saved before tree1 alloc) */
-        clReleaseMemObject(buf_tree0);
+        /* tree0 reused as ping-pong buffer — do NOT release here */
         clReleaseMemObject(buf_t0_cnt);
 
         uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
@@ -431,35 +438,17 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                    tot, (double)tot / NBUCKETS, mx);
     }
 
-    /* Stages 2-7: progressive alloc/free.
-     * sizeof() on the C structs from solution_extraction.c gives the correct
-     * GPU sizes for stages 2-7 (all use uint32_t attr). */
-    const size_t slot_sz[8] = {
-        0,
-        STAGE1_GPU_BYTES,
-        sizeof(stage2_slot_t),
-        sizeof(stage3_slot_t),
-        sizeof(stage4_slot_t),
-        sizeof(stage5_slot_t),
-        sizeof(stage6_slot_t),
-        sizeof(stage7_slot_t)
-    };
-
+    /* Stages 2-7: double-buffer reuse of buf_tree0 / buf_tree1.
+     * No new GPU allocations — stages alternate writing into the buffer
+     * not currently used as input. Total GPU = 2 × 1.07 GB (constant). */
     cl_mem prev = buf_tree1, curr = NULL;
     {
         uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
         for (int s = 2; s <= 7; s++) {
-            fprintf(stderr, "MB_S%d alloc %zu MB\n", s,
-                    tree_size * slot_sz[s] / (1024*1024)); fflush(stderr);
-            curr = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                  tree_size * slot_sz[s], NULL, &err);
-            if (err != CL_SUCCESS) {
-                fprintf(stderr, "MB_S%d alloc FAILED err=%d\n", s, err); fflush(stderr);
-                printf("  Stage %d: buffer alloc failed (%d), stopping\n", s, err);
-                clReleaseMemObject(prev);
-                prev = curr = NULL;
-                break;
-            }
+            /* Ping-pong: even stages write to tree0, odd stages write to tree1 */
+            curr = (s % 2 == 0) ? buf_tree0 : buf_tree1;
+            fprintf(stderr, "MB_S%d reuse %s\n", s,
+                    (curr == buf_tree0) ? "tree0" : "tree1"); fflush(stderr);
 
             clSetKernelArg(kernels[s-1], 0, sizeof(cl_mem), &prev);
             clSetKernelArg(kernels[s-1], 1, sizeof(cl_mem), &buf_counts[s-2]);
@@ -480,15 +469,17 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             fprintf(stderr, "MB_S%d kernel done\n", s); fflush(stderr);
 
             {
-                size_t gsz = tree_size * _slot_sz[s];
-                void *tmp = malloc(gsz);
-                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
+                size_t ssz = _slot_sz[s];
+                /* For Stage 7: read only first 65536 candidate slots (not full buffer) */
+                size_t nread = (s == 7) ? 65536 : tree_size;
+                size_t total_bytes = nread * ssz;
                 cpu_attrs[s] = malloc(tree_size * sizeof(uint32_t));
-                for (size_t k = 0; k < tree_size; k++)
-                    cpu_attrs[s][k] = *(uint32_t *)((char*)tmp + k * _slot_sz[s]);
+                char *tmp = malloc(total_bytes);
+                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
+                for (size_t k = 0; k < nread; k++)
+                    cpu_attrs[s][k] = *(uint32_t *)(tmp + k * ssz);
                 free(tmp);
             }
-            clReleaseMemObject(prev);
             prev = curr;
 
             clEnqueueReadBuffer(queue, buf_counts[s-1], CL_TRUE, 0,
@@ -512,7 +503,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         uint32_t nsol = 0;
         clEnqueueReadBuffer(queue, buf_counts[6], CL_TRUE,
                             0, sizeof(uint32_t), &nsol, 0, NULL, NULL);
-        if (nsol > NSLOTS) nsol = NSLOTS;
+        if (nsol > 65536) nsol = 65536;
 
         if (show_progress)
             printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
@@ -520,7 +511,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         if (nsol > 0) {
             printf("  [Stage 7] %u candidate(s) — extracting...\n", nsol);
             uint32_t tree_sz = (uint32_t)tree_size;
-            for (uint32_t s = 0; s < nsol && s < NSLOTS; s++) {
+            for (uint32_t s = 0; s < nsol; s++) {
                 uint32_t indices[PROOFSIZE];
                 if (extract_solution(cpu_attrs, s, indices, tree_sz)) {
                     printf("  SOLUTION nonce=%u:", nonce_idx);
@@ -534,9 +525,11 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 }
             }
         }
-        clReleaseMemObject(curr);
     }
 
+    /* Release the two shared tree buffers */
+    clReleaseMemObject(buf_tree0);
+    clReleaseMemObject(buf_tree1);
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
     for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
     return valid_solutions;

@@ -3,5 +3,8 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"specstory.cloudSync.enabled": "always"
+	}
 }

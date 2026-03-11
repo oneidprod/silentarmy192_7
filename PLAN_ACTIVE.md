@@ -1,20 +1,68 @@
 # PLAN_ACTIVE — Equihash 192,7 GPU Miner
-**Last updated**: 2026-03-11
+**Last updated**: 2026-03-11 (Session 2 end)
 **Branch**: rewrite
-**Status**: Pipeline working, extraction stubbed (crashed SSH — see below)
+**Status**: _slot_sz fix applied, built clean — NOT YET TESTED
 
 ---
 
-## Current State (start here every session)
-
+## Session Startup Command
 ```
-./sa-tromp 1    → runs 1.85s, NSLOTS=40, Stage 7: 942 candidates, 40 in bucket 0
+Session#3  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
 ```
 
-Pipeline is complete and correct. Only missing piece: solution extraction.
+---
 
-**What compiles and runs safely**: `./sa-tromp 1` — lean cascade, extraction is a stub (safe, prints message, returns).
-**What crashed SSH**: the `mine_batch_extract()` rerun approach — ran full cascade twice back-to-back. OOM + GPU overload killed SSH server. That code is now stubbed out.
+## IN PROGRESS — Test the _slot_sz stride fix
+
+### What was done in Session 2
+Full solution extraction implemented inside `mine_batch()`. Last bug identified and fixed:
+
+**Root cause of duplicate leaf indices**: `_slot_sz` array used packed GPU sizes but Beignet OpenCL C pads structs to 4-byte alignment. Wrong strides → attr readback read garbage → every tree walk found zero attrs → duplicate leaves.
+
+**Fix applied (sa-tromp.c line 282)**:
+```c
+// WRONG (packed):
+const size_t _slot_sz[8] = {28,28,22,19,16,13,10,7};
+// CORRECT (Beignet 4-byte padded):
+const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};
+```
+
+**Last build**: `make clean && rm -f _kernel.h && make sa-tromp` → clean, no errors.
+
+**NOT YET RUN**: `./sa-tromp 1`
+
+---
+
+## NEXT STEPS (in order)
+
+### Step A — Run ./sa-tromp 1
+```bash
+timeout 90 ./sa-tromp 1 2>/dev/null
+echo "EXIT=$?"
+```
+Expected: Stage 7 ~942 candidates, extraction fires, find ≥0 VERIFIED solutions (expect ~2 per nonce).
+
+If extraction works (finds VERIFIED solutions) → Step B.
+If still all duplicates → see Debugging section below (stride probe).
+
+### Step B — Run ./sa-tromp 50
+```bash
+timeout 300 ./sa-tromp 50 2>/dev/null | grep -E "SOLUTION|VERIFIED|Stage 7"
+echo "EXIT=$?"
+```
+Expected: ≥1 VERIFIED solution across 50 nonces.
+
+### Step C — Commit
+```bash
+git add sa-tromp.c input.cl solution_extraction.c solution_extraction.h PLAN_ACTIVE.md CLAUDE_SONNET_4.6.md
+git commit -m "fix: correct _slot_sz Beignet padding + full extraction pipeline
+
+- _slot_sz: {28,28,24,20,16,16,12,8} (was {28,28,22,19,16,13,10,7})
+- Beignet OpenCL C pads structs to 4-byte alignment; packed sizes caused
+  wrong attr strides → all leaf indices were duplicates
+- Status: working
+- Next: pool testing"
+```
 
 ---
 
@@ -22,9 +70,10 @@ Pipeline is complete and correct. Only missing piece: solution extraction.
 
 - **GPU**: Intel integrated (Beignet driver). GPU and CPU **share the same RAM**.
 - **RAM**: 7.6 GB total, ~5.4 GB available.
-- **Beignet GPU watchdog**: NDRange dispatches > ~2^18–2^20 work items with heavy compute HANG GPU and DROP SSH. Always batch in ≤ 2^18 work items per clEnqueueNDRangeKernel. Current code batches at 2^18 — do not increase.
-- **Current NSLOTS=40**: tree0 = tree1 = 1M×40×28B = **1.07 GB each on GPU**. Two trees simultaneously = 2.14 GB. Safe within 5.4 GB free.
-- **Never** run two full cascades back-to-back (the broken rerun approach).
+- **Beignet watchdog**: NDRange > ~2^18–2^20 work items HANG GPU and DROP SSH. Current code batches at 2^18 — do not increase.
+- **Memory model**: Beignet maps GPU buffer pages into process RSS via `clEnqueueReadBuffer`. `clReleaseMemObject` does NOT immediately unmap. Must use double-buffer ping-pong (see Architecture).
+- **NEVER** run two full cascades back-to-back (OOM + SSH death).
+- **ALWAYS** build with: `make clean && rm -f _kernel.h && make sa-tromp`
 
 ---
 
@@ -43,22 +92,33 @@ Pipeline is complete and correct. Only missing piece: solution extraction.
 
 ---
 
-## File Map
+## Architecture: mine_batch() (sa-tromp.c)
 
-| File | Role |
-|------|------|
-| `sa-tromp.c` | Host: mine_batch(), mine_batch_extract() stub, main() |
-| `input.cl` | GPU kernels: kernel_round0_gen, kernel_stage1..7_collisions |
-| `solution_extraction.c` | CPU: extract_solution(), listindices(), flat_idx_of() |
-| `solution_extraction.h` | Declares extract_solution() |
-| `param.h` | All #defines (PARAM_N, NBUCKETS, NSLOTS, etc.) |
-| `blake.c` / `blake.h` | CPU blake2b for zcash_blake2b_init/update |
+```
+1. Allocate buf_tree0, buf_tree1 (1.07GB each, once, never reallocated)
+2. kernel_round0_gen loop: fills buf_tree0 in 2^18-WI batches → cpu_attrs[0] readback
+3. Stage 1 kernel: buf_tree0 → buf_tree1 → cpu_attrs[1] readback
+4. Stages 2-7 loop (s=2..7):
+     curr = (s%2==0) ? buf_tree0 : buf_tree1
+     dispatch kernel (prev → curr)
+     readback curr → cpu_attrs[s]
+     prev = curr
+5. Read nsol count from Stage 7
+6. For each candidate s in 0..nsol-1:
+     extract_solution(cpu_attrs, s, indices, tree_sz)
+     if valid: print + verify
+7. Free all cpu_attrs, release buf_tree0/buf_tree1
+```
+
+**Stage 7 candidate flat index**: bucket 0 slot s → flat7 = s (flat = bucket*NSLOTS + slot = 0*40 + s = s).
+
+**Stage 7 kernel cap**: `if (sl >= 65536) continue;` — allows all ~1000 Stage 7 candidates through, not just NSLOTS=40.
+
+**Nonce variation**: `zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0)` is called per nonce — each nonce produces different hashes.
 
 ---
 
 ## Attr Encoding
-
-Every GPU stage stores `uint32_t attr` as first field of each slot:
 
 | Stage | attr encodes |
 |-------|-------------|
@@ -69,119 +129,62 @@ Every GPU stage stores `uint32_t attr` as first field of each slot:
 
 ---
 
-## THE TASK: Implement extraction in mine_batch() directly (no rerun)
+## Slot Sizes (Beignet 4-byte padded — CRITICAL)
 
-### Memory budget (NSLOTS=40, safe to proceed)
-- Per stage: prev_tree(1.07GB GPU) + curr_tree(1.07GB GPU) + tmp_readback(1.07GB CPU) = 3.2GB peak
-- After step: prev freed, tmp freed → only cpu_attrs[r](160MB) remains
-- All 8 cpu_attrs live during extraction: 8 × 160MB = 1.28GB
-- Total worst case: baseline(0.5GB) + 3.2GB = **3.7GB** — within 5.4GB available
+| Stage | struct fields | _slot_sz | note |
+|-------|--------------|---------|------|
+| 0 | u32 + u8[24] | 28 | exact fit |
+| 1 | u32 + u8[21] + u8[3]pad | 28 | explicit pad in struct |
+| 2 | u32 + u8[18] | **24** | Beignet adds 2B tail pad |
+| 3 | u32 + u8[15] | **20** | Beignet adds 1B tail pad |
+| 4 | u32 + u8[12] | 16 | exact fit |
+| 5 | u32 + u8[9]  | **16** | Beignet adds 3B tail pad |
+| 6 | u32 + u8[6]  | **12** | Beignet adds 2B tail pad |
+| 7 | u32 + u8[3]  | **8**  | Beignet adds 1B tail pad |
 
-### Implementation (in mine_batch(), NOT a separate function)
+sa-tromp.c line 282: `const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};`
 
-**Step 1** — Declare `cpu_attrs` at top of mine_batch():
-```c
-uint32_t *cpu_attrs[8] = {NULL};
-const size_t slot_sz[8] = {28,28,22,19,16,13,10,7};
-```
+---
 
-**Step 2** — After kernel_round0_gen loop + clFinish (~line 340), readback tree0 attrs:
+## File Map
+
+| File | Role |
+|------|------|
+| `sa-tromp.c` | Host: mine_batch(), main() |
+| `input.cl` | GPU kernels: kernel_round0_gen, kernel_stage1..7_collisions |
+| `solution_extraction.c` | CPU: extract_solution(), listindices(), flat_idx_of() |
+| `solution_extraction.h` | Declares extract_solution() |
+| `param.h` | All #defines (PARAM_N, NBUCKETS, NSLOTS, etc.) |
+| `blake.c` / `blake.h` | CPU blake2b |
+
+---
+
+## Debugging Guide
+
+### If still all-duplicate leaf indices after _slot_sz fix
+The strides may still be wrong. Add stride probe after Stage 3 readback in sa-tromp.c:
 ```c
 {
-    size_t gsz = tree_size * slot_sz[0];
-    void *tmp = malloc(gsz);
-    clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
-    cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
-    for (size_t k = 0; k < tree_size; k++)
-        cpu_attrs[0][k] = *(uint32_t *)((char*)tmp + k * slot_sz[0]);
-    free(tmp);
-    /* keep buf_tree0 alive as 'prev' input to stage 1 */
-}
-```
-
-**Step 3** — In the stage 1-7 loop, after clFinish(), BEFORE clReleaseMemObject(prev):
-```c
-{
-    size_t gsz = tree_size * slot_sz[s];
-    void *tmp = malloc(gsz);
-    clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, gsz, tmp, 0, NULL, NULL);
-    clReleaseMemObject(prev);        /* free prev GPU FIRST to make room */
-    if (s == 1) clReleaseMemObject(prev_cnt);
-    cpu_attrs[s] = malloc(tree_size * sizeof(uint32_t));
-    for (size_t k = 0; k < tree_size; k++)
-        cpu_attrs[s][k] = *(uint32_t *)((char*)tmp + k * slot_sz[s]);
-    free(tmp);
-    prev = curr;
-}
-```
-Remove the existing `clReleaseMemObject(prev)` calls that currently appear after the loop.
-
-**Step 4** — Replace the `if (nsol > 0)` block:
-```c
-if (nsol > 0) {
-    printf("  [Stage 7] %u candidate(s) — extracting...\n", nsol);
-    uint32_t tree_sz = (uint32_t)tree_size;
-    for (uint32_t s = 0; s < nsol && s < NSLOTS; s++) {
-        uint32_t indices[PROOFSIZE];
-        if (extract_solution(cpu_attrs, s, indices, tree_sz)) {
-            printf("  SOLUTION nonce=%u:", nonce_idx);
-            for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
-            printf("\n");
-            if (verify_equihash_full(indices, header, 0))
-                printf("  VERIFIED OK\n");
-            else
-                printf("  VERIFY FAILED\n");
-            valid_solutions++;
-        }
+    for (int stride = 18; stride <= 24; stride++) {
+        void *tmp2 = malloc(stride * 100);
+        clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, stride*100, tmp2, 0, NULL, NULL);
+        uint32_t a = *(uint32_t *)((char*)tmp2 + 10*stride);
+        uint32_t bkt_a = a >> 12, i_a = (a>>6)&0x3F, j_a = a&0x3F;
+        printf("stride=%d slot10 attr=%08x bkt=%u i=%u j=%u (i>j=%d)\n",
+               stride, a, bkt_a, i_a, j_a, i_a>j_a);
+        free(tmp2);
     }
 }
-for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
 ```
+Valid attr has `i > j` (slot_i > slot_j in collision pairs). Correct stride shows `i>j=1`.
 
-**Step 5** — Remove `mine_batch_extract` forward decl and stub entirely.
+### If OOM (EXIT=137)
+Double-buffer is in place — should not happen. Check no extra GPU allocations were added in the loop.
 
-### Slot sizes verification
-Run once after compile to confirm sizes match:
-```c
-printf("slot_sz: %zu %zu %zu %zu %zu %zu %zu %zu\n",
-    sizeof(stage0_slot_t), sizeof(stage1_slot_t), sizeof(stage2_slot_t),
-    sizeof(stage3_slot_t), sizeof(stage4_slot_t), sizeof(stage5_slot_t),
-    sizeof(stage6_slot_t), sizeof(stage7_slot_t));
-// Expected: 28 28 22 19 16 13 10 7
-```
+### If Stage 7 produces 0 candidates
+Check `NSLOTS_STAGE1` in input.cl is 40. Check Stage 7 kernel cap is 65536, not NSLOTS.
 
----
-
-## Test Sequence (safe)
-
+### Circuit breaker
 ```bash
-# A: compile only
-make clean && rm -f _kernel.h && make sa-tromp 2>&1 | grep -i error
-
-# B: pipeline + extraction (nonce 0 always has 40 bucket-0 candidates)
-./sa-tromp 1
-
-# C: if B survives without dropping SSH, run more
-./sa-tromp 50
-```
-
-If B crashes SSH: reduce NSLOTS from 40 to 32 in both `param.h` and `input.cl` line with `NSLOTS_STAGE1`.
-
----
-
-## extract_solution() signature
-```c
-// solution_extraction.c
-int extract_solution(uint32_t **cpu_attrs, uint32_t flat7,
-                     uint32_t *indices, uint32_t tree_sz);
-// flat7 = bucket*NSLOTS + slot  (bucket 0 → flat7 = slot index)
-// tree_sz = NBUCKETS * NSLOTS
-// returns 1 if valid solution, 0 otherwise
-```
-
----
-
-## Session startup command (copy-paste)
-```
-Session#1  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
+make clean && rm -f _kernel.h && make sa-tromp
 ```

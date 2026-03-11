@@ -41,7 +41,7 @@ test : sa-solver
 #	different: testing/sols-100
 
 clean :
-	rm -f sa-solver _kernel.h *.o _temp_*
+	rm -f sa-solver sa-tromp _kernel.h *.o _temp_*
 
 re : clean all
 
