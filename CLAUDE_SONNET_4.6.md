@@ -78,40 +78,40 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**IN PROGRESS** — start fresh session with: "Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
 
-### Sub-task checklist:
-- [x] Build: `make clean && rm -f _kernel.h && make sa-tromp` — DONE (clean build)
-- [x] PLAN_ACTIVE.md saved and committed (23ca9a9)
-- [x] Step A: Edit sa-tromp.c NSLOTS 64→48 (done)
-- [x] Step A: Edit input.cl NSLOTS_STAGE1 64→48 (done)
-- [x] ./sa-tromp 1 with NSLOTS=48 → OOM (99 MB free observed)
-- [x] Step A: NSLOTS 48→40 applied + rebuilt (e3f1347)
-- [x] Step A: ./sa-tromp 1 → tree0 32.0/bucket, Stage 7 942 candidates, 1.38s, NO OOM
-- [x] Step B: solution_extraction.c rewritten (commit TBD) — new uint32 attr, flat_idx_of, listindices, extract_solution
-- [x] Step B: mine_batch() wired — cpu_attrs[8] collected via 64MB chunked reads before each tree release
-- [ ] **BLOCKED: ./sa-tromp 1 killed (exit 137) before first printf** ← FIX THIS NEXT
+### Current State (2026-03-11, end of session)
+- Last commit: 42a87f7 — pipeline completes without OOM
+- `./sa-tromp 1` runs end-to-end in 1.85s, NSLOTS=40, no OOM
+- Stage 7: 942 total candidates, 40 in bucket 0 (bucket full = overflow)
+- Solution extraction NOT YET IMPLEMENTED (removed cpu_attrs approach, need rerun design)
 
-### Current Bug: Killed Before First Printf
-- Binary runs fine: `./sa-tromp --help` works
-- `./sa-tromp 1` is killed with exit code 137 (SIGKILL from OOM) before main() first printf
-- Stale sa-tromp process was running when bug appeared — may be Beignet GPU memory not fully released
-- Root cause: likely Beignet OpenCL driver initialization allocates too much memory on startup
-- Memory at start: 6.2 GB available, but Beignet JIT + GPU init might exhaust it
+### What Was Fixed This Session
+- **OOM root cause**: cpu_attrs[0..6] (7×160MB=1.1GB) accumulated during cascade while GPU kernels ran → Beignet killed process
+- **Fix**: removed all cpu_attrs readbacks from cascade loop entirely
+- **Stage 7 watchdog**: reduced DISPATCH from 1<<18 to 1<<16 (DISPATCH/4) for Stage 7 kernel — O(NSLOTS²) per WI needs smaller batches
 
-### Next Debug Steps:
-1. Check dmesg for OOM killer output: `dmesg | grep -i "oom\|killed" | tail -20`
-2. Check if Beignet init itself is OOMing: add printf BEFORE init_opencl() call
-3. If Beignet init OOMs: reduce GPU memory usage OR look at swap (1.1-1.5 GB used = heap fragmentation)
-4. Fallback: reduce NSLOTS to 32 (more overflow, but less memory)
+### NEXT STEP: Implement Solution Extraction (Rerun Design)
+The cpu_attrs approach is broken (OOM). New design:
 
-### What Was Done This Session:
-- Commits: e3f1347 (NSLOTS=40), 140aa52 (pipeline verified)
-- solution_extraction.c: FULLY REWRITTEN (flat_idx_of, listindices, extract_solution)
-- sa-tromp.c mine_batch(): cpu_attrs[8] collection + Stage 7 extraction loop
-- Changes NOT yet committed (uncommitted edits to sa-tromp.c and solution_extraction.c)
-- [ ] Step B: Rewrite solution_extraction.c (uint32 attr, new BUCKBITS/NSLOTS)
-- [ ] Step B: Wire mine_batch() extraction + ./sa-tromp 100
+**Option A — Rerun on solution nonces (recommended)**:
+1. Cascade runs lean (no cpu_attrs) → Stage 7 count
+2. If count > 0: call `mine_batch_extract(header, nonce_idx, cand_attrs[], ncands)`
+3. `mine_batch_extract` re-runs cascade, this time saving attrs (only ~8s rerun, rare)
+4. Calls `extract_solution()` + `verify_equihash_full()` for each candidate
+
+**Important observations for next session**:
+- Stage 7 bucket 0 has 40 candidates but ALL 40 NSLOTS are filled — this means the bucket overflowed and only the first 40 pairs are stored. Real solution may be among them or may have been dropped.
+- Stage 1-6 collision counts grow instead of shrink (32M→31M→29M→26M→20M→12M) — this is wrong. Expected: each stage should cut count by ~16x. The cascade is not narrowing properly, suggesting the RESTBITS/bucket XOR matching has a bug.
+- With 74K overflow buckets at Stage 0 (max slot count 66 vs NSLOTS=40), significant data is lost.
+
+### Sub-task checklist for next session:
+- [x] Build: `make clean && rm -f _kernel.h && make sa-tromp`
+- [x] NSLOTS=40 pipeline runs without OOM (1.85s)
+- [x] Stage 7: 942 candidates found
+- [ ] **NEXT**: Investigate why Stage 1-6 counts don't narrow (expected ~16x reduction per stage)
+- [ ] **THEN**: Implement mine_batch_extract() rerun for candidate nonces
+- [ ] **THEN**: `./sa-tromp 100` → verify ≥1 valid solution
 
 ### Memory Root Cause (MUST FIX FIRST):
 System: 7.6 GB total, 1.9 GB used, 5.4 GB available (from `free -h`)

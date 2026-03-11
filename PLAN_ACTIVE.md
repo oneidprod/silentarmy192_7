@@ -1,26 +1,35 @@
 # Plan: Resume — Fix OOM-at-startup + Verify Solutions
 
-## CURRENT STATE (2026-03-11)
+## CURRENT STATE (2026-03-11, end of session)
 
-Steps A and B code are done. Blocked on exit-137 before first printf.
+Pipeline runs end-to-end without OOM. Extraction not yet implemented.
 
 ### Commits this session:
 - e3f1347: NSLOTS 48→40
-- 140aa52: pipeline verified (Stage 7: 942 candidates, 1.38s, no OOM)
+- 140aa52: pipeline verified (Stage 7: 942 candidates, 1.85s, no OOM)
+- 779d648: solution_extraction.c rewrite + mine_batch wiring (was broken — exit-137)
+- 42a87f7: removed cpu_attrs from cascade — pipeline now completes cleanly
 
-### Uncommitted changes (in sa-tromp.c + solution_extraction.c):
-- solution_extraction.c: full rewrite (flat_idx_of, listindices, extract_solution, flat uint32 attrs)
-- sa-tromp.c: cpu_attrs[8] collected via 64MB chunks before each release; Stage 7 extraction loop
+### Current status:
+- `./sa-tromp 1` completes in 1.85s, NSLOTS=40, no OOM
+- Stage 7: 942 total candidates, 40 in bucket 0
+- Extraction: TODO (see Option A below)
 
-### Current blocker: `./sa-tromp 1` killed (exit 137, SIGKILL) before first printf
-`./sa-tromp --help` works. Init_opencl() suspect. Possible Beignet heap leak from prior session.
+### Key observation — cascade not narrowing properly:
+Stage 1-6 counts: 32M → 31M → 29M → 26M → 20M → 12M (should be ~16x reduction per stage)
+This means the collision cascade is NOT working correctly. Expected: ~32M → ~2M → ~125K → ~7K → ~440 → ~27 → ~1-2.
+Root cause likely: XOR matching bits are wrong — either RESTBITS calculation or bucket assignment in stages 2-7.
 
-### Debug + fix plan:
-1. `dmesg | grep -i "oom\|killed" | tail -20` → confirm OOM killer
-2. `git stash` → revert to last working binary → test: `./sa-tromp 1` → if it works, the extraction code changes themselves cause OOM at init
-3. Or: add `printf("A\n"); fflush(stdout);` BEFORE `init_opencl()`, rebuild, rerun → see if "A" prints
-4. If Beignet init OOMs: `sudo swapoff -a && sudo swapon -a` clears swap, then retry
-5. If still OOM: reduce NSLOTS to 32 or investigate Beignet driver memory leak
+### NEXT STEP: Fix cascade narrowing, then extraction
+
+**Step 1 — Diagnose cascade**: Check kernel_stage2_collisions logic:
+- Does it correctly XOR the hash bytes and check RESTBITS bits = 0?
+- Does it correctly compute the output bucket from the remaining hash bits?
+- Compare with equihash_tromp reference implementation
+
+**Step 2 — Implement extraction (Option A — Rerun)**:
+After cascade: if Stage 7 count > 0, re-run cascade saving cpu_attrs[], then extract.
+Since solutions are rare this adds ~8s only on winning nonces.
 
 ---
 
