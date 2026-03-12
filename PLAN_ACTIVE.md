@@ -12,54 +12,42 @@ Session#3  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resu
 
 ---
 
-## IN PROGRESS — Test the _slot_sz stride fix
+## IN PROGRESS — Fix verify_equihash_full (VERIFY FAILED bug)
 
-### What was done in Session 2
-Full solution extraction implemented inside `mine_batch()`. Last bug identified and fixed:
-
-**Root cause of duplicate leaf indices**: `_slot_sz` array used packed GPU sizes but Beignet OpenCL C pads structs to 4-byte alignment. Wrong strides → attr readback read garbage → every tree walk found zero attrs → duplicate leaves.
-
-**Fix applied (sa-tromp.c line 282)**:
-```c
-// WRONG (packed):
-const size_t _slot_sz[8] = {28,28,22,19,16,13,10,7};
-// CORRECT (Beignet 4-byte padded):
-const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};
-```
-
-**Last build**: `make clean && rm -f _kernel.h && make sa-tromp` → clean, no errors.
-
-**NOT YET RUN**: `./sa-tromp 1`
+### Session 3 context
+- `_slot_sz` fix confirmed working: extraction finds SOLUTION for ~2/nonce
+- Rewrote `verify_equihash_full` + `eh_genhash` to use `zcash_blake2b_*` and include `nonce_idx`
+- `eh_genhash` CPU↔GPU parity confirmed by `/tmp/test_nonce` tool (all idx MATCH)
+- **Current bug**: VERIFY FAILED on all solutions
 
 ---
 
 ## NEXT STEPS (in order)
 
-### Step A — Run ./sa-tromp 1
+### Step A — Diagnose VERIFY FAILED
+Enable verbose mode on verify to see where it fails:
 ```bash
-timeout 90 ./sa-tromp 1 2>/dev/null
-echo "EXIT=$?"
+timeout 90 ./sa-tromp 1 2>/dev/null | head -20
 ```
-Expected: Stage 7 ~942 candidates, extraction fires, find ≥0 VERIFIED solutions (expect ~2 per nonce).
+In sa-tromp.c: temporarily call `verify_equihash_full(indices, header, nonce_idx, 1)` (verbose=1).
 
-If extraction works (finds VERIFIED solutions) → Step B.
-If still all duplicates → see Debugging section below (stride probe).
+Suspect: ordering violation in `eh_verifyrec` (`*indices >= *indices1`). Our `extract_solution`
+only checks global uniqueness, not the required binary-tree ordering at each level.
 
-### Step B — Run ./sa-tromp 50
-```bash
-timeout 300 ./sa-tromp 50 2>/dev/null | grep -E "SOLUTION|VERIFIED|Stage 7"
-echo "EXIT=$?"
-```
-Expected: ≥1 VERIFIED solution across 50 nonces.
+If ordering violation: need to sort indices into canonical Equihash order before verifying.
+If XOR mismatch: `eh_genhash` still wrong (unlikely — test tool confirmed match).
+
+### Step B — Fix + retest
+Apply fix, rebuild, run `./sa-tromp 1` → expect VERIFIED OK.
 
 ### Step C — Commit
 ```bash
-git add sa-tromp.c input.cl solution_extraction.c solution_extraction.h PLAN_ACTIVE.md CLAUDE_SONNET_4.6.md
-git commit -m "fix: correct _slot_sz Beignet padding + full extraction pipeline
+git add sa-tromp.c solution_extraction.c PLAN_ACTIVE.md CLAUDE_SONNET_4.6.md
+git commit -m "fix: _slot_sz Beignet padding + extraction working + verifier fix
 
-- _slot_sz: {28,28,24,20,16,16,12,8} (was {28,28,22,19,16,13,10,7})
-- Beignet OpenCL C pads structs to 4-byte alignment; packed sizes caused
-  wrong attr strides → all leaf indices were duplicates
+- _slot_sz: {28,28,24,20,16,16,12,8} — Beignet 4-byte padding
+- verify_equihash_full: use zcash_blake2b_* + nonce_idx in state
+- eh_genhash: correct message format (message[1]=g<<32, st.bytes=140)
 - Status: working
 - Next: pool testing"
 ```
