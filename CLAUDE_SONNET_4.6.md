@@ -121,6 +121,16 @@ Extraction finds SOLUTION for ~half of nonces. ~2 solutions/nonce average (match
 - **Status**: verify still fails — next step is to isolate whether failure is at r=2 or higher
   for the candidates that pass 128-distinct check
 
+### Session 5 Progress (2026-03-12)
+- Diagnosed: ALL verify failures were ordering violations (`indices[0] >= indices[half]`)
+- Root cause: `canonical_sort` was being called AFTER `verify_equihash_full`
+- Fix: call `canonical_sort(indices, PARAM_K)` BEFORE `verify_equihash_full`
+- XOR chain is unaffected (XOR commutative; swapping whole subtrees is valid)
+- Removed all remaining debug prints; cleaned up extraction loop
+- Added Context Management section to CLAUDE.md
+- **RESULT: 4 verified solutions in 10 nonces — PIPELINE FULLY WORKING**
+- Commit: 703dd24
+
 ### Sub-task checklist:
 - [x] Pipeline runs without OOM (double-buffer)
 - [x] Nonce variation working
@@ -128,13 +138,10 @@ Extraction finds SOLUTION for ~half of nonces. ~2 solutions/nonce average (match
 - [x] cpu_attrs readback for all 8 stages
 - [x] extraction loop in mine_batch()
 - [x] _slot_sz Beignet padding fix applied and built
-- [x] **DONE**: `./sa-tromp 1` → extraction fires, finds SOLUTION candidates
-- [x] **DONE**: `./sa-tromp 50` → finds SOLUTION in nonces 0,1,2,4,5,8,9 (avg ~2/nonce)
-- [x] canonical_sort applied before verify; ordering violation at r=7 fixed
-- [x] verify_equihash_full refactored to take blake_ctx directly
-- [x] debug prints cleaned
-- [ ] **NEXT**: Fix `verify_equihash_full` → still fails (likely r=2+ XOR mismatch)
-- [ ] **THEN**: commit + pool testing
+- [x] canonical_sort before verify — ordering invariant satisfied
+- [x] verify_equihash_full passes — solutions confirmed valid
+- [x] debug prints cleaned; production-ready output
+- [ ] **NEXT**: Pool testing via nheqminer integration
 
 ## Completed Steps
 | # | Date | Commit | Description |

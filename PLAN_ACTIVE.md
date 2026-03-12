@@ -1,26 +1,23 @@
 # PLAN_ACTIVE — Equihash 192,7 GPU Miner
-**Last updated**: 2026-03-12 (Session 4 end)
+**Last updated**: 2026-03-12 (Session 5 end)
 **Branch**: rewrite
-**Status**: canonical_sort added, debug prints cleaned — verify still fails at r=2+
+**Status**: PIPELINE FULLY WORKING — solutions found and verified end-to-end
 
 ---
 
 ## Session Startup Command
 ```
-Session#5  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
+Session#6  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
 ```
 
 ---
 
-## IN PROGRESS — Fix verify_equihash_full (VERIFY FAILED bug)
+## ✅ DONE — verify_equihash_full working (Session 5)
 
-### Session 4 context
-- canonical_sort applied before verify → r=7 ordering violation fixed
-- verify_equihash_full now takes blake_ctx directly (no re-init needed)
-- GPU/CPU hash parity confirmed: AFTER_SORT debug showed MATCH for Stage 1 pairs
-- **Current bug**: verify still fails — likely at r=2 or higher in eh_verifyrec
-- ~99.8% of Stage 7 candidates are degenerate (duplicate leaves); only ~0.2% pass 128-distinct check
-- Those ~0.2% pass 128-distinct but still fail verify
+- **Fix**: `canonical_sort(indices, PARAM_K)` must run BEFORE `verify_equihash_full`
+- All failures were ordering violations — tree traversal order ≠ canonical order
+- XOR chain preserved: swapping whole subtrees is valid (XOR is commutative)
+- Result: 4 verified solutions in 10 nonces (commit 703dd24)
 
 ---
 
