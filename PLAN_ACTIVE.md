@@ -1,14 +1,32 @@
 # PLAN_ACTIVE — Equihash 192,7 GPU Miner
-**Last updated**: 2026-03-12 (Session 5 end)
+**Last updated**: 2026-03-12 (Session 7 end)
 **Branch**: rewrite
-**Status**: PIPELINE FULLY WORKING — solutions found and verified end-to-end
+**Status**: PROTOCOL MISMATCH DISCOVERED — sa-tromp uses wrong header format, must fix before pool use
 
 ---
 
 ## Session Startup Command
 ```
-Session#6  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
+Session#7  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
 ```
+
+---
+
+## Session 6 Summary (context ran out — no code written)
+
+### Research completed — do NOT repeat:
+- `test_verifier.c` already exists as cross-check tool (uses Tromp blake2b + ZERO_PoW)
+- `EQ1927_USAGE_GUIDE.md` documents the existing workflow
+- **CRITICAL FINDING**: `test_verifier.c:109` uses one 140-byte update (WRONG for sa-tromp)
+- sa-tromp uses TWO updates: `blake2b_update(header, 128)` + `blake2b_update(&nonce_idx, 4)` — incompatible
+- `param.h:ZCASH_BLOCK_HEADER_LEN=140` — legacy; sa-tromp uses 128, NOT 140
+- sa-tromp header = `"test_block_header_data_192_7"` (28 bytes) + 100 zero bytes
+- nheqminer interface: ISolver.h, solver1927 = working reference, MinerFactory pattern understood
+- Full plan in `/home/mine/.claude/plans/sunny-sprouting-codd.md`
+
+### Disk space note:
+- Deleted `core` dump (~300MB) to free space
+- `make clean && rm -f _kernel.h` needed before building (object files may be stale)
 
 ---
 
@@ -21,9 +39,82 @@ Session#6  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resu
 
 ---
 
-## NEXT STEPS (in order)
+## NEXT STEPS — START HERE Session 8
 
-### Step A — Add r-level verbose to verify
+### Step 0 — Verify Zero coin nonce location (research only, no code)
+Check what nonce offset Zero coin actually uses in its 140-byte header:
+- `equihash_tromp/equi.c` uses `((u32*)headernonce)[32]` = byte 128 (4-byte nonce)
+- Original silentarmy (Zcash) used 32-byte nonce at bytes 108-139
+- Zero coin likely uses the Tromp convention: 4-byte nonce at byte 128
+Run: `./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | head -5` to confirm it works
+Then check eq1927 source to confirm byte offset
+
+### Step 1 — Fix blake2b to handle 140-byte header
+Option A (simpler): Use Tromp's blake2b for the initial state setup in sa-tromp.c
+- `#include "equihash_tromp/blake/blake2.h"` in sa-tromp.c
+- Replace the two `zcash_blake2b_update` calls with one Tromp `blake2b_update(ctx, header, 140)`
+- Extract `ctx.h[0..7]` (8 × uint64_t) to upload to GPU — same as before
+- GPU kernel receives same 8-word state, continues as-is
+
+Option B (harder): extend zcash_blake2b_update to buffer partial blocks
+
+**Recommend Option A** — minimal change, proven code path.
+
+### Step 2 — Fix header construction in sa-tromp.c main()
+- Change header to 140 bytes
+- Embed nonce at correct offset (byte 128 for Zero coin)
+- Iterate nonce as uint32_t
+
+### Step 3 — Fix GPU kernel counter
+- Currently `v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4` = 144
+- For 140-byte header + 4-byte index: `v[12] ^= 144` is actually CORRECT if total = 140+4
+- But the Tromp approach is: blake state after 140-byte header is the starting state,
+  then GPU adds 4-byte index → total = 144. **No kernel change needed** if Option A used.
+
+### Step 4 — Rebuild + cross-check with eq1927
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep '^Solution' | head -1 | sed 's/Solution //' > /tmp/eq_sol.txt
+HEADER=$(printf '%280s' | tr ' ' '0')  # 140-byte zero header
+./test_verifier "$HEADER" /tmp/eq_sol.txt   # should PASS with same blake init
+```
+
+### Step 5 — Commit
+
+## NEXT STEPS (in order) — COMPLETED Session 7
+
+### Step A — Fix test_verifier.c nonce embedding (Part A of plan)
+**File**: `test_verifier.c`
+**Change**: Line 109 — replace single 140-byte `blake2b_update` with:
+```c
+blake2b_update(&ctx, header, 128);           // 128-byte header
+uint32_t nonce_le = htole32(nonce_idx);
+blake2b_update(&ctx, (uchar*)&nonce_le, 4);  // nonce separate
+```
+Also: change function signature to accept `uint32_t nonce_idx`, update `main()` to parse `-n N`.
+
+### Step B — Add `Solution` output line to sa-tromp.c
+**File**: `sa-tromp.c` line ~477 — after existing SOLUTION printf, add:
+```c
+printf("Solution");
+for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
+printf("\n");
+```
+
+### Step C — Rebuild + cross-check
+```bash
+make clean && rm -f _kernel.h && make sa-tromp
+gcc -o test_verifier test_verifier.c equihash_tromp/blake/blake2b.cpp \
+    -DWN=192 -DWK=7 -I. -Iequihash_tromp -Iequihash_tromp/blake -lstdc++ -lm
+./sa-tromp 10 | grep '^Solution' | head -1 | sed 's/Solution //' > /tmp/sol.txt
+# then: ./test_verifier <header_hex_256chars> /tmp/sol.txt -n <nonce>
+```
+
+### Step D — Commit, then start nheqminer integration (Part B of plan)
+See full plan at `/home/mine/.claude/plans/sunny-sprouting-codd.md`
+
+---
+
+### (STALE — was pre-Session-5) Step A — Add r-level verbose to verify
 In `verify_equihash_full` / `eh_verifyrec`: print which round (r) first fails and the two
 XOR-input hash values. This will confirm whether it's r=2 or elsewhere.
 
