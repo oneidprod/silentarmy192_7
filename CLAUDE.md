@@ -40,5 +40,11 @@ No git commit needed for the reset itself.
 ```
 Commit every 30-45 min or at logical breakpoints.
 
+## Context Management
+- Monitor context usage each turn; if at or above 50%, stop immediately
+- Commit all in-progress work, update PLAN_ACTIVE.md and CLAUDE_SONNET_4.6.md with current state
+- Notify user: "Context at ~X% — stopping to preserve session limit. Committed checkpoint."
+- Do NOT continue coding; wait for user to start a new session
+
 ## Active Session Doc
 See [CLAUDE_SONNET_4.6.md](CLAUDE_SONNET_4.6.md) for current state, active plan, and next step.

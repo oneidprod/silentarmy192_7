@@ -68,10 +68,8 @@ static void listindices(uint32_t **cpu_attrs, int round, uint32_t flat,
         return;
     }
     uint32_t attr = cpu_attrs[round][flat];
-    listindices(cpu_attrs, round - 1, flat_idx_of(attr, 0),
-                indices, cnt, tree_size);
-    listindices(cpu_attrs, round - 1, flat_idx_of(attr, 1),
-                indices, cnt, tree_size);
+    listindices(cpu_attrs, round - 1, flat_idx_of(attr, 0), indices, cnt, tree_size);
+    listindices(cpu_attrs, round - 1, flat_idx_of(attr, 1), indices, cnt, tree_size);
 }
 
 /* Sort indices into canonical Equihash order (recursive).

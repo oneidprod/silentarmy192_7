@@ -468,20 +468,17 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
 
         if (nsol > 0) {
-            printf("  [Stage 7] %u candidate(s) — extracting...\n", nsol);
             uint32_t tree_sz = (uint32_t)tree_size;
             for (uint32_t s = 0; s < nsol; s++) {
                 uint32_t indices[PROOFSIZE];
-                if (extract_solution(cpu_attrs, s, indices, tree_sz)) {
-                    /* Apply canonical sort (required by Equihash ordering check) */
-                    canonical_sort(indices, PARAM_K);
-                    if (verify_equihash_full(indices, &blake_gen, 0)) {
-                        printf("  SOLUTION nonce=%u:", nonce_idx);
-                        for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
-                        printf("\n");
-                        printf("  VERIFIED OK\n");
-                        valid_solutions++;
-                    }
+                if (!extract_solution(cpu_attrs, s, indices, tree_sz)) continue;
+                canonical_sort(indices, PARAM_K);
+                if (verify_equihash_full(indices, &blake_gen, 0)) {
+                    printf("  SOLUTION nonce=%u:", nonce_idx);
+                    for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
+                    printf("\n");
+                    printf("  VERIFIED OK\n");
+                    valid_solutions++;
                 }
             }
         }
