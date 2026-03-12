@@ -74,8 +74,28 @@ static void listindices(uint32_t **cpu_attrs, int round, uint32_t flat,
                 indices, cnt, tree_size);
 }
 
+/* Sort indices into canonical Equihash order (recursive).
+ * At each level, the half-block with the smaller min-index must come first.
+ * block: pointer to block of 2^depth indices, depth: tree depth (PARAM_K downto 0). */
+static void canonical_sort(uint32_t *block, int depth)
+{
+    if (depth == 0) return;
+    int half = 1 << (depth - 1);
+    canonical_sort(block,        depth - 1);
+    canonical_sort(block + half, depth - 1);
+    /* Swap halves if left[0] > right[0] */
+    if (block[0] > block[half]) {
+        uint32_t tmp[half]; /* VLA, depth <= PARAM_K=7, max half=64 */
+        memcpy(tmp,         block,        half * sizeof(uint32_t));
+        memcpy(block,       block + half, half * sizeof(uint32_t));
+        memcpy(block + half, tmp,         half * sizeof(uint32_t));
+    }
+}
+
 /* Extract 128 solution indices from tree7 candidate at flat index flat7.
- * Returns 1 if 128 distinct indices found, 0 on error or duplicates. */
+ * Returns 1 if 128 distinct indices found in tree order, 0 on duplicates.
+ * Indices are in tree traversal order (NOT canonical); caller may canonical_sort
+ * before output but must verify BEFORE sorting. */
 int extract_solution(uint32_t **cpu_attrs, uint32_t flat7,
                      uint32_t *solution_indices, uint32_t tree_size)
 {
@@ -86,12 +106,13 @@ int extract_solution(uint32_t **cpu_attrs, uint32_t flat7,
                 PROOFSIZE, cnt);
         return 0;
     }
+    /* Check all 128 indices are distinct */
     uint32_t sorted[PROOFSIZE];
     memcpy(sorted, solution_indices, PROOFSIZE * sizeof(uint32_t));
     qsort(sorted, PROOFSIZE, sizeof(uint32_t), compu32);
+    int dup = 0;
     for (int i = 1; i < PROOFSIZE; i++) {
-        if (sorted[i] <= sorted[i-1])
-            return 0; /* duplicate or unordered */
+        if (sorted[i] <= sorted[i-1]) { dup = 1; break; }
     }
-    return 1;
+    return dup ? 0 : 1;
 }

@@ -106,9 +106,20 @@ Extraction finds SOLUTION for ~half of nonces. ~2 solutions/nonce average (match
 - Rewrote `verify_equihash_full` + `eh_genhash` to use silentarmy blake (`zcash_blake2b_*`)
   and include `nonce_idx` in initial state (matching GPU blake upload)
 - Confirmed with `/tmp/test_nonce` tool: CPU `eh_genhash` matches GPU emulation with nonce
-- **Remaining bug**: `verify_equihash_full` still prints VERIFY FAILED
-  - `eh_genhash` is correct (proven by test tool)
-  - Suspect: `eh_verifyrec` ordering check or XOR check; need verbose run to isolate
+- **Remaining bug**: `verify_equihash_full` still VERIFY FAILED
+  - Diagnosed r=7: ordering violation — fixed by calling `canonical_sort(indices, PARAM_K)` before verify
+  - After canonical_sort fix: still fails at r=1 XOR check in some candidates, passes others?
+  - AFTER_SORT debug confirmed: Stage 1 pairs at [0,1] MATCH hash prefixes (GPU/CPU parity OK)
+  - Root cause not fully isolated: multiple candidates per nonce; verbose shows a different candidate
+    than the one where MATCH was confirmed. Likely r=2+ fails for candidates that pass r=1.
+
+### Session 4 Progress (2026-03-12)
+- Added `canonical_sort()` call before `verify_equihash_full()` in extraction loop
+- Changed `verify_equihash_full` signature to take `const blake2b_state_t *blake_ctx` directly
+  (uses blake_gen from mine_batch — eliminates redundant blake re-init)
+- Cleaned all debug prints (MB2-MB16, A-G, li_debug) from sa-tromp.c and solution_extraction.c
+- **Status**: verify still fails — next step is to isolate whether failure is at r=2 or higher
+  for the candidates that pass 128-distinct check
 
 ### Sub-task checklist:
 - [x] Pipeline runs without OOM (double-buffer)
@@ -119,7 +130,10 @@ Extraction finds SOLUTION for ~half of nonces. ~2 solutions/nonce average (match
 - [x] _slot_sz Beignet padding fix applied and built
 - [x] **DONE**: `./sa-tromp 1` → extraction fires, finds SOLUTION candidates
 - [x] **DONE**: `./sa-tromp 50` → finds SOLUTION in nonces 0,1,2,4,5,8,9 (avg ~2/nonce)
-- [ ] **NEXT**: Fix `verify_equihash_full` → currently prints VERIFY FAILED
+- [x] canonical_sort applied before verify; ordering violation at r=7 fixed
+- [x] verify_equihash_full refactored to take blake_ctx directly
+- [x] debug prints cleaned
+- [ ] **NEXT**: Fix `verify_equihash_full` → still fails (likely r=2+ XOR mismatch)
 - [ ] **THEN**: commit + pool testing
 
 ## Completed Steps

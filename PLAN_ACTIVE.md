@@ -1,53 +1,61 @@
 # PLAN_ACTIVE — Equihash 192,7 GPU Miner
-**Last updated**: 2026-03-11 (Session 2 end)
+**Last updated**: 2026-03-12 (Session 4 end)
 **Branch**: rewrite
-**Status**: _slot_sz fix applied, built clean — NOT YET TESTED
+**Status**: canonical_sort added, debug prints cleaned — verify still fails at r=2+
 
 ---
 
 ## Session Startup Command
 ```
-Session#3  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
+Session#5  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker.
 ```
 
 ---
 
 ## IN PROGRESS — Fix verify_equihash_full (VERIFY FAILED bug)
 
-### Session 3 context
-- `_slot_sz` fix confirmed working: extraction finds SOLUTION for ~2/nonce
-- Rewrote `verify_equihash_full` + `eh_genhash` to use `zcash_blake2b_*` and include `nonce_idx`
-- `eh_genhash` CPU↔GPU parity confirmed by `/tmp/test_nonce` tool (all idx MATCH)
-- **Current bug**: VERIFY FAILED on all solutions
+### Session 4 context
+- canonical_sort applied before verify → r=7 ordering violation fixed
+- verify_equihash_full now takes blake_ctx directly (no re-init needed)
+- GPU/CPU hash parity confirmed: AFTER_SORT debug showed MATCH for Stage 1 pairs
+- **Current bug**: verify still fails — likely at r=2 or higher in eh_verifyrec
+- ~99.8% of Stage 7 candidates are degenerate (duplicate leaves); only ~0.2% pass 128-distinct check
+- Those ~0.2% pass 128-distinct but still fail verify
 
 ---
 
 ## NEXT STEPS (in order)
 
-### Step A — Diagnose VERIFY FAILED
-Enable verbose mode on verify to see where it fails:
-```bash
-timeout 90 ./sa-tromp 1 2>/dev/null | head -20
+### Step A — Add r-level verbose to verify
+In `verify_equihash_full` / `eh_verifyrec`: print which round (r) first fails and the two
+XOR-input hash values. This will confirm whether it's r=2 or elsewhere.
+
+```c
+// In eh_verifyrec, before the XOR check at each level, print:
+fprintf(stderr, "verify r=%d: h0=", r); for(int i=0;i<n;i++) fprintf(stderr,"%02x",h0[i]);
+fprintf(stderr, " h1="); for(int i=0;i<n;i++) fprintf(stderr,"%02x",h1[i]); fprintf(stderr,"\n");
 ```
-In sa-tromp.c: temporarily call `verify_equihash_full(indices, header, nonce_idx, 1)` (verbose=1).
 
-Suspect: ordering violation in `eh_verifyrec` (`*indices >= *indices1`). Our `extract_solution`
-only checks global uniqueness, not the required binary-tree ordering at each level.
+### Step B — Compare with known-good extraction
+If r=2+ XOR fails: the attr chain in cpu_attrs[2] is corrupted OR canonical_sort is scrambling
+indices in a way that breaks the XOR chain.
 
-If ordering violation: need to sort indices into canonical Equihash order before verifying.
-If XOR mismatch: `eh_genhash` still wrong (unlikely — test tool confirmed match).
+Key hypothesis: canonical_sort must preserve the PAIRWISE relationship at each level, not just
+sort globally. The tree has a strict structure: left subtree XOR right subtree = 0 at each depth.
+Sorting may swap indices in ways that break this pairing.
 
-### Step B — Fix + retest
+Alternative: DON'T canonical_sort. Instead fix eh_verifyrec to tolerate either ordering.
+Or: verify BEFORE canonical_sort, then sort only for output.
+
+### Step C — Fix + retest
 Apply fix, rebuild, run `./sa-tromp 1` → expect VERIFIED OK.
 
-### Step C — Commit
+### Step D — Commit
 ```bash
 git add sa-tromp.c solution_extraction.c PLAN_ACTIVE.md CLAUDE_SONNET_4.6.md
-git commit -m "fix: _slot_sz Beignet padding + extraction working + verifier fix
+git commit -m "fix: verifier working
 
-- _slot_sz: {28,28,24,20,16,16,12,8} — Beignet 4-byte padding
-- verify_equihash_full: use zcash_blake2b_* + nonce_idx in state
-- eh_genhash: correct message format (message[1]=g<<32, st.bytes=140)
+- canonical_sort + verify pipeline
 - Status: working
 - Next: pool testing"
 ```
