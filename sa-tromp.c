@@ -274,8 +274,12 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     blake2b_state_t blake_gen;
     zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
     zcash_blake2b_update(&blake_gen, header, 128, 0);
-    /* Mix in nonce_idx so each mining attempt uses different hashes */
-    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
+    /* Mix in nonce_idx so each mining attempt uses different hashes.
+     * Use a zero-padded 128-byte block so the state is deterministic/reproducible. */
+    uint8_t nonce_block[128] = {0};
+    uint32_t nonce_le = htole32(nonce_idx);
+    memcpy(nonce_block, &nonce_le, 4);
+    zcash_blake2b_update(&blake_gen, nonce_block, 4, 0);
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
@@ -478,6 +482,9 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                     for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
                     printf("\n");
                     printf("  VERIFIED OK\n");
+                    printf("Solution");
+                    for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
+                    printf("\n");
                     valid_solutions++;
                 }
             }

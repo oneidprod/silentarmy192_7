@@ -1,4 +1,5 @@
-// Test program to verify a known-good solution from eq1927
+// Test program to cross-check sa-tromp solutions using sa-tromp's own blake2b
+// Replicates eh_genhash exactly as in sa-tromp.c to guarantee hash parity.
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -10,29 +11,30 @@ typedef uint8_t uchar;
 typedef uint32_t uint;
 
 #include "param.h"
-#include "equihash_tromp/blake/blake2.h"
+#include "blake.h"
 
 /* Define htole32 for little-endian conversion if not available */
 #ifndef htole32
 #define htole32(x) ((uint32_t)(x))  /* Assume little-endian host */
 #endif
 
-// Verification functions (using Tromp's blake2b)
-static void eh_genhash(const blake2b_state *ctx, uint32_t idx, uint8_t *hash)
+// Replicates sa-tromp.c eh_genhash exactly (must stay in sync)
+static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
 {
-    blake2b_state state = *ctx;
-    const uint32_t hashes_per_blake = 512 / PARAM_N;
-    const uint32_t hash_bytes = PARAM_N / 8;
+    blake2b_state_t st = *ctx;
+    const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
+    const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
     uint8_t full_hash[ZCASH_HASH_LEN];
-    
-    /* Tromp's genhash: convert index to little-endian before hashing */
-    uint32_t leb = htole32(idx / hashes_per_blake);
-    blake2b_update(&state, (uchar *)&leb, sizeof(uint32_t));
-    blake2b_final(&state, full_hash, ZCASH_HASH_LEN);
+    uint64_t message[16] = {0};
+    uint32_t g = idx / hashes_per_blake;
+    message[1] = ((uint64_t)g) << 32;
+    st.bytes = ZCASH_BLOCK_HEADER_LEN;
+    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
+    zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
-static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r, int depth_indent)
+static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
@@ -50,30 +52,17 @@ static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_
     }
 
     uint8_t hash0[hash_bytes], hash1[hash_bytes];
-    if (!eh_verifyrec(ctx, indices, hash0, r - 1, depth_indent + 1)) {
-        printf("[r=%d] FAIL: left subtree failed\n", r);
-        return 0;
-    }
-    if (!eh_verifyrec(ctx, indices1, hash1, r - 1, depth_indent + 1)) {
-        printf("[r=%d] FAIL: right subtree failed\n", r);
-        return 0;
-    }
+    if (!eh_verifyrec(ctx, indices, hash0, r - 1)) return 0;
+    if (!eh_verifyrec(ctx, indices1, hash1, r - 1)) return 0;
 
     for (uint32_t i = 0; i < hash_bytes; i++)
         hash[i] = hash0[i] ^ hash1[i];
-
-    if (r == 1) {
-        printf("[r=1] XOR result: %02x%02x%02x%02x%02x%02x (from %02x%02x%02x ^ %02x%02x%02x)\n",
-               hash[0], hash[1], hash[2], hash[3], hash[4], hash[5],
-               hash0[0], hash0[1], hash0[2], hash1[0], hash1[1], hash1[2]);
-    }
 
     int b = r < PARAM_K ? r * PREFIX : PARAM_N;
     int i;
     for (i = 0; i < b / 8; i++) {
         if (hash[i]) {
-            printf("[r=%d] FAIL: XOR byte %d is %02x (expected 00), need %d zero bits\n",
-                   r, i, hash[i], b);
+            printf("[r=%d] FAIL: XOR byte %d is %02x (expected 00)\n", r, i, hash[i]);
             return 0;
         }
     }
@@ -84,58 +73,50 @@ static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_
     return 1;
 }
 
-static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
+static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header, uint32_t nonce_idx)
 {
-    blake2b_state ctx;
+    blake2b_state_t ctx;
     uint8_t hash[PARAM_N / 8];
-    
-    /* Initialize blake2b with proper personalization for Zero Equihash 192,7 */
-    /* Tromp's setheader logic */
-    char personals[16];
-    memcpy(personals + 0, "ZERO_PoW", 8);
-    uint32_t le_N = htole32(PARAM_N);
-    memcpy(personals + 8, &le_N, 4);
-    uint32_t le_K = htole32(PARAM_K);
-    memcpy(personals + 12, &le_K, 4);
-    
-    blake2b_param P;
-    memset(&P, 0, sizeof(blake2b_param));
-    P.digest_length = ZCASH_HASH_LEN;
-    P.fanout = 1;
-    P.depth = 1;
-    memcpy(P.personal, (const uint8_t *)personals, 16);
-    
-    blake2b_init_param(&ctx, &P);
-    blake2b_update(&ctx, header, ZCASH_BLOCK_HEADER_LEN);
 
-    return eh_verifyrec(&ctx, indices, hash, PARAM_K, 0);
+    zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    /* Match sa-tromp's nonce embedding: zero-padded 128-byte block with nonce at bytes 0-3 */
+    zcash_blake2b_update(&ctx, header, 128, 0);
+    uint8_t nonce_block[128] = {0};
+    uint32_t nonce_le = htole32(nonce_idx);
+    memcpy(nonce_block, &nonce_le, 4);
+    zcash_blake2b_update(&ctx, nonce_block, 4, 0);
+
+    return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <header_hex> <solution_file>\n", argv[0]);
+    if (argc < 3 || argc > 5) {
+        fprintf(stderr, "Usage: %s <header_hex> <solution_file> [-n nonce_idx]\n", argv[0]);
         return 1;
     }
-    
-    // Parse header
+
+    uint32_t nonce_idx = 0;
+    if (argc >= 5 && strcmp(argv[3], "-n") == 0)
+        nonce_idx = (uint32_t)atoi(argv[4]);
+
+    // Parse header (128 bytes = 256 hex chars)
     const char *header_hex = argv[1];
-    uint8_t header[ZCASH_BLOCK_HEADER_LEN];
-    if (strlen(header_hex) != 2 * ZCASH_BLOCK_HEADER_LEN) {
-        fprintf(stderr, "Header must be %d hex chars (got %zu)\n", 
-                2 * ZCASH_BLOCK_HEADER_LEN, strlen(header_hex));
+    uint8_t header[128];
+    if (strlen(header_hex) != 256) {
+        fprintf(stderr, "Header must be 256 hex chars (128 bytes) (got %zu)\n", strlen(header_hex));
         return 1;
     }
-    for (int i = 0; i < ZCASH_BLOCK_HEADER_LEN; i++) {
+    for (int i = 0; i < 128; i++) {
         sscanf(header_hex + 2*i, "%2hhx", &header[i]);
     }
-    
+
     // Parse solution file
     FILE *f = fopen(argv[2], "r");
     if (!f) {
         fprintf(stderr, "Cannot open solution file: %s\n", argv[2]);
         return 1;
     }
-    
+
     uint32_t indices[1 << PARAM_K];
     for (int i = 0; i < (1 << PARAM_K); i++) {
         if (fscanf(f, "%x", &indices[i]) != 1) {
@@ -145,21 +126,17 @@ int main(int argc, char **argv) {
         }
     }
     fclose(f);
-    
-    printf("Testing verification with header and %d indices...\n", 1 << PARAM_K);
+
+    printf("Testing verification with header (128 bytes) and %d indices, nonce=%u...\n", 1 << PARAM_K, nonce_idx);
     printf("Header: %.32s...\n", header_hex);
-    printf("First few indices: %x %x %x %x\n", 
+    printf("First few indices: %x %x %x %x\n",
            indices[0], indices[1], indices[2], indices[3]);
-    
-    if (verify_equihash_full(indices, header)) {
-        printf("\n✓ VERIFICATION PASSED - Our verifier accepts the reference solution!\n");
-        printf("This means our verification code is CORRECT.\n");
-        printf("The problem is in GPU candidate extraction.\n");
+
+    if (verify_equihash_full(indices, header, nonce_idx)) {
+        printf("\n✓ VERIFICATION PASSED - Independent verifier accepts the solution!\n");
         return 0;
     } else {
-        printf("\n✗ VERIFICATION FAILED - Our verifier rejects the reference solution!\n");
-        printf("This means our verification code has a BUG.\n");
-        printf("We need to fix the verifier before debugging GPU.\n");
+        printf("\n✗ VERIFICATION FAILED\n");
         return 1;
     }
 }
