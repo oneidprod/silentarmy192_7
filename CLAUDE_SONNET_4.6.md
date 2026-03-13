@@ -78,7 +78,66 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#16  Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#17 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+
+### ⚠️ Session 16 State (2026-03-13) — IN PROGRESS
+
+#### What was done
+- test_verifier confirmed working: passes eq1927 reference solutions ✅
+- Diagnosed sa-tromp blake protocol mismatch:
+  - sa-tromp was: `update(header,128)` + `update(&nonce_idx,4)` → nonce at byte 128
+  - Correct (eq1927): `update(headernonce,140)` → nonce at `[27]*4` = byte 108
+- Changed mine_batch() to build 140-byte headernonce, nonce at byte 108
+- **BROKEN**: `zcash_blake2b_update` asserts `msg_len <= 128` — crashes on 140-byte input
+- Commit: `ca6b9c9` — wip, broken
+
+#### Root Cause
+Silentarmy `blake.c` is single-block only (max 128 bytes per update).
+Tromp's `blake2b_state` (in `equihash_tromp/blake/blake2b.cpp`) handles multi-block.
+
+#### NEXT SESSION — START HERE
+
+**Fix**: Use Tromp's `blake2b_state` to set up the 140-byte headernonce, then copy `h[8]` into the GPU buffer and into `blake_gen.h` for CPU verify.
+
+```c
+// In mine_batch(), replace the zcash_blake2b_* setup with:
+#include "equihash_tromp/blake/blake2.h"
+
+uint8_t headernonce[ZCASH_BLOCK_HEADER_LEN] = {0};
+memcpy(headernonce, header, 108);
+((uint32_t *)headernonce)[27] = htole32(nonce_idx);  // byte 108
+
+// Init Tromp blake with Zero personalization
+blake2b_param P = {0};
+P.digest_length = ZCASH_HASH_LEN;
+P.fanout = 1;
+P.depth = 1;
+char personals[16];
+memcpy(personals, "ZERO_PoW", 8);
+uint32_t le_N = htole32(PARAM_N);
+uint32_t le_K = htole32(PARAM_K);
+memcpy(personals+8, &le_N, 4);
+memcpy(personals+12, &le_K, 4);
+memcpy(P.personal, personals, 16);
+
+blake2b_state tromp_st;
+blake2b_init_param(&tromp_st, &P);
+blake2b_update(&tromp_st, headernonce, ZCASH_BLOCK_HEADER_LEN);
+
+// Copy h[8] into silentarmy blake_gen for GPU + CPU verify
+blake2b_state_t blake_gen;
+memcpy(blake_gen.h, tromp_st.h, 8 * sizeof(uint64_t));
+blake_gen.bytes = ZCASH_BLOCK_HEADER_LEN;
+```
+
+Then GPU `buf_blake_st` uses `blake_gen.h` as before. CPU `verify_equihash_full` takes `&blake_gen`.
+
+**Note**: `zcash_blake2b_init` sets up personalization. We need Tromp's `blake2b_init_param` instead, then steal `h[8]`. The `bytes` field in `blake_gen` is used by `eh_genhash` to set `st.bytes = ZCASH_BLOCK_HEADER_LEN` before each per-hash update — so setting `blake_gen.bytes = 140` is correct.
+
+**After fix**:
+1. `make sa-tromp && ./sa-tromp 5` → solutions + VERIFIED OK
+2. Cross-check: capture solution from nonce N, build headernonce hex (byte 108 = nonce LE), run `test_verifier` → VERIFICATION PASSED
+3. Commit fix, then proceed to Phase 2 Stratum (compress_sol + stratum.c)
 
 ### ✅ Session 15 State (2026-03-13) — COMPLETE
 
