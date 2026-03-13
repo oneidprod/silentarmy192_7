@@ -155,29 +155,50 @@ test_verifier uses eq1927 protocol — these are intentionally DIFFERENT tools f
 - **Real suspect**: blake2b state mismatch between GPU and CPU verify — nonce protocol changed heavily in sessions 8-12.
 - **Current state**: sa-tromp.c + input.cl have NSLOTS=64 (broken, OOM). Must revert to 32.
 
+#### Session 13 (continued) — Findings
+
+- Reverted to 703dd24 blake init: `zcash_blake2b_update(header,128)` + `zcash_blake2b_update(&nonce_idx,4)`
+- NSLOTS=32 confirmed (NSLOTS=64 OOM, NSLOTS=36+ all OOM on 3.1GB machine)
+- **496 false positives** = C(32,2) = all pairs in a full bucket — caused by two-block protocol making all hash[3..5] match
+- **After restoring 703dd24 blake**: 0 candidates at Stage 7
+- **Hypothesis**: With NSLOTS=32 (vs NSLOTS=40 at 703dd24), the cascade dies before Stage 7 produces real XOR=0 pairs. Need NSLOTS=40 but that OOMd before.
+- **Key insight**: At 703dd24, cpu_attrs readback was NOT present (added later in 9f6d4cd). That's why NSLOTS=40 fit in RAM then but causes OOM now.
+
 #### NEXT SESSION — START HERE
 
-**Step 1: Revert NSLOTS 64→32**
-```bash
-# In sa-tromp.c line 34: NSLOTS 64 → 32
-# In input.cl line 1153: NSLOTS_STAGE1 64 → 32
-make clean && make sa-tromp
-./sa-tromp 1
-```
-Expected: no OOM, some candidates, hopefully VERIFIED OK.
+**Goal**: Get solutions like 703dd24 did.
 
-**Step 2: If still 0 solutions — compare blake init to last working commit**
-```bash
-git show 703dd24:sa-tromp.c | grep -A 20 "Phase 1"
-```
-Compare `buf_blake_st` upload (GPU blake state) vs `blake_gen` used by CPU verify.
-If they differ → that's the bug.
+**Step 1: Try NSLOTS=40 WITHOUT cpu_attrs readback**
+The session-5 version (`703dd24`) had NO cpu_attrs readback — it did a separate `mine_batch_extract()` rerun pass.
+With cpu_attrs removed, peak RAM at NSLOTS=40: 2 * 1M * 40 * 28 = 2.35GB — fits in 3.1GB.
 
-**Step 3: (Old Step 2) Run sa-tromp 5 and check if solutions found**
+Check if we can disable cpu_attrs readback temporarily (replace all 8 readbacks with no-ops)
+and set NSLOTS=40, just to confirm Stage 7 finds candidates again.
+
+**Step 2: Restore cpu_attrs but fix RAM**
+Option A: Don't alloc tmp — read attrs directly (requires stride trick or staged reads)
+Option B: Free each tmp immediately after copy (already done — peak is gpu_trees+tmp+accumulated_attrs)
+Option C: Don't accumulate all 8 simultaneously — but extraction needs all 8
+
+**Simplest path**: Set NSLOTS=40, remove cpu_attrs readback, confirm Stage 7 finds candidates.
+Then figure out extraction without the huge readback.
+
 ```bash
-./sa-tromp 5
+# sa-tromp.c: NSLOTS 32→40
+# input.cl: NSLOTS_STAGE1 32→40  
+# sa-tromp.c: comment out all 8 cpu_attrs malloc+readback blocks
+# Confirm Stage 7 shows >0 candidates
+make clean && make sa-tromp && ./sa-tromp 1
 ```
-Expect: solutions + "VERIFIED OK".
+
+**Step 3: If candidates found, solve the extraction RAM problem**
+- The tmp buffer for readback is the issue: at each stage, tmp = tree_size * slot_sz bytes
+- At NSLOTS=40, stage0 tmp = 1M * 40 * 28 = 1.12GB — too large alongside gpu_trees
+- Fix: read attrs directly from GPU buffer using clEnqueueReadBuffer with stride
+  Actually CL doesn't support strided reads. Alternative:
+  Read only the first 4 bytes of each slot using a kernel that extracts attrs to a compact buffer.
+  Write a small `kernel_extract_attrs` that reads tree[k].attr and writes to attrs[k].
+  This runs on GPU, output is 4B/slot — no large tmp needed.
 
 **Step 3: Cross-check via test_verifier** — generate eq1927 reference solutions and cross-check test_verifier
 ```bash
