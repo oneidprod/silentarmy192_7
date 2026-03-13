@@ -557,23 +557,15 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             clReleaseMemObject(scratch_b);
             #undef EXTRACT_ATTRS
 
+            /* Re-read nsol from re-run's Stage 7 output (buf_counts[6]).
+             * The first-pass nsol is stale — re-run has different slot ordering. */
+            clEnqueueReadBuffer(queue, buf_counts[6], CL_TRUE,
+                                0, sizeof(uint32_t), &nsol, 0, NULL, NULL);
+            if (nsol > 65536) nsol = 65536;
+            if (show_progress)
+                printf("  Stage 7 (re-run): %u solution candidate(s)\n", nsol);
+
             /* ── Phase 3c: Extract and verify solutions ── */
-            /* Debug: find first non-bucket-0 candidate and print it */
-            if (show_progress && cpu_attrs[7]) {
-                int _non0 = 0;
-                for (uint32_t _d = 0; _d < nsol; _d++) {
-                    if ((cpu_attrs[7][_d] >> 12) != 0) _non0++;
-                }
-                printf("  [dbg] stage7 candidates with src_bucket!=0: %d / %u\n", _non0, nsol);
-                for (uint32_t _d = 0; _d < nsol; _d++) {
-                    uint32_t _a = cpu_attrs[7][_d];
-                    if ((_a >> 12) != 0) {
-                        printf("  [dbg7] first non-b0 cand[%u] attr=0x%08x bucket=%u si=%u sj=%u\n",
-                               _d, _a, _a>>12, (_a>>6)&0x3f, _a&0x3f);
-                        break;
-                    }
-                }
-            }
             uint32_t tree_sz = (uint32_t)tree_size;
             int n_extracted = 0, n_verified = 0;
             for (uint32_t s = 0; s < nsol; s++) {
