@@ -1653,3 +1653,16 @@ void kernel_round0_gen(
         }
     }
 }
+
+/* Extract just the attr (first uint32_t) from each slot in a tree buffer.
+ * Used for low-memory attr readback: avoids malloc-ing the full slot-stride tmp buffer.
+ * Input:  tree buffer (raw bytes, stride = slot_stride bytes per slot)
+ * Output: compact uint array, one attr per slot */
+__kernel void kernel_extract_attrs(
+    __global const uchar *tree,
+    uint slot_stride,
+    __global uint *out)
+{
+    size_t k = get_global_id(0);
+    out[k] = *((__global const uint *)(tree + (size_t)k * slot_stride));
+}
