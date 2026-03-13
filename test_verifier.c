@@ -1,5 +1,4 @@
-// Test program to cross-check sa-tromp solutions using sa-tromp's own blake2b
-// Replicates eh_genhash exactly as in sa-tromp.c to guarantee hash parity.
+// Test program to verify a known-good solution from eq1927
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -11,30 +10,29 @@ typedef uint8_t uchar;
 typedef uint32_t uint;
 
 #include "param.h"
-#include "blake.h"
+#include "equihash_tromp/blake/blake2.h"
 
 /* Define htole32 for little-endian conversion if not available */
 #ifndef htole32
 #define htole32(x) ((uint32_t)(x))  /* Assume little-endian host */
 #endif
 
-// Replicates sa-tromp.c eh_genhash exactly (must stay in sync)
-static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
+// Verification functions (using Tromp's blake2b)
+static void eh_genhash(const blake2b_state *ctx, uint32_t idx, uint8_t *hash)
 {
-    blake2b_state_t st = *ctx;
-    const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
-    const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
+    blake2b_state state = *ctx;
+    const uint32_t hashes_per_blake = 512 / PARAM_N;
+    const uint32_t hash_bytes = PARAM_N / 8;
     uint8_t full_hash[ZCASH_HASH_LEN];
-    uint64_t message[16] = {0};
-    uint32_t g = idx / hashes_per_blake;
-    message[1] = ((uint64_t)g) << 32;
-    st.bytes = ZCASH_BLOCK_HEADER_LEN;
-    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
-    zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
+
+    /* Tromp's genhash: convert index to little-endian before hashing */
+    uint32_t leb = htole32(idx / hashes_per_blake);
+    blake2b_update(&state, (uchar *)&leb, sizeof(uint32_t));
+    blake2b_final(&state, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
-static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
+static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
@@ -73,47 +71,51 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
     return 1;
 }
 
-static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header, uint32_t nonce_idx)
+/* header is the full 140-byte headernonce (nonce already embedded at [27]*4=byte 108) */
+static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
 {
-    blake2b_state_t ctx;
+    blake2b_state ctx;
     uint8_t hash[PARAM_N / 8];
 
-    /* Zero coin protocol: 140-byte headernonce.
-     * Nonce at bytes 108-111 (u32 index [27]), per eq1927 equi.c line:
-     *   ((u32*)headernonce)[27] = htole32(nonce)
-     * Block 1: bytes 0-127 (contains nonce). Block 2: bytes 128-139 (all zero).
-     * zcash_blake2b_update reads full 128-byte block so both must be [128]. */
-    uint8_t headernonce_b1[128] = {0};
-    uint8_t headernonce_b2[128] = {0};
-    memcpy(headernonce_b1, header, 108);
-    ((uint32_t *)headernonce_b1)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
-    zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&ctx, headernonce_b1, 128, 0);  /* block 1: bytes 0-127 */
-    zcash_blake2b_update(&ctx, headernonce_b2,  12, 0);  /* block 2: bytes 128-139 */
+    /* Initialize blake2b with proper personalization for Zero Equihash 192,7 */
+    /* Matches Tromp's setheader logic exactly */
+    char personals[16];
+    memcpy(personals + 0, "ZERO_PoW", 8);
+    uint32_t le_N = htole32(PARAM_N);
+    memcpy(personals + 8, &le_N, 4);
+    uint32_t le_K = htole32(PARAM_K);
+    memcpy(personals + 12, &le_K, 4);
+
+    blake2b_param P;
+    memset(&P, 0, sizeof(blake2b_param));
+    P.digest_length = ZCASH_HASH_LEN;
+    P.fanout = 1;
+    P.depth = 1;
+    memcpy(P.personal, (const uint8_t *)personals, 16);
+
+    blake2b_init_param(&ctx, &P);
+    blake2b_update(&ctx, header, ZCASH_BLOCK_HEADER_LEN);
 
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 5) {
-        fprintf(stderr, "Usage: %s <header_hex> <solution_file> [-n nonce_idx]\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <headernonce_hex> <solution_file>\n", argv[0]);
+        fprintf(stderr, "  headernonce_hex: up to %d hex chars (140 bytes), nonce at [27]*4=byte 108\n",
+                2 * ZCASH_BLOCK_HEADER_LEN);
         return 1;
     }
 
-    uint32_t nonce_idx = 0;
-    if (argc >= 5 && strcmp(argv[3], "-n") == 0)
-        nonce_idx = (uint32_t)atoi(argv[4]);
-
-    // Parse header (108 bytes = 216 hex chars — first 108 bytes of block header)
+    /* Parse up to 140-byte headernonce (zero-padded) */
     const char *header_hex = argv[1];
-    uint8_t header[108] = {0};
+    uint8_t header[ZCASH_BLOCK_HEADER_LEN] = {0};
     size_t hlen = strlen(header_hex);
-    if (hlen > 216) hlen = 216;
-    for (size_t i = 0; i < hlen / 2; i++) {
+    if (hlen > 2 * (size_t)ZCASH_BLOCK_HEADER_LEN) hlen = 2 * ZCASH_BLOCK_HEADER_LEN;
+    for (size_t i = 0; i < hlen / 2; i++)
         sscanf(header_hex + 2*i, "%2hhx", &header[i]);
-    }
 
-    // Parse solution file
+    /* Parse solution file */
     FILE *f = fopen(argv[2], "r");
     if (!f) {
         fprintf(stderr, "Cannot open solution file: %s\n", argv[2]);
@@ -130,13 +132,13 @@ int main(int argc, char **argv) {
     }
     fclose(f);
 
-    printf("Testing verification with header and %d indices, nonce=%u...\n", 1 << PARAM_K, nonce_idx);
+    printf("Testing verification with %d indices...\n", 1 << PARAM_K);
     printf("Header: %.32s...\n", header_hex);
     printf("First few indices: %x %x %x %x\n",
            indices[0], indices[1], indices[2], indices[3]);
 
-    if (verify_equihash_full(indices, header, nonce_idx)) {
-        printf("\n✓ VERIFICATION PASSED - Independent verifier accepts the solution!\n");
+    if (verify_equihash_full(indices, header)) {
+        printf("\n✓ VERIFICATION PASSED\n");
         return 0;
     } else {
         printf("\n✗ VERIFICATION FAILED\n");

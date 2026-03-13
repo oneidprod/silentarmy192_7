@@ -52,12 +52,12 @@ cpu_tromp_baseline : cpu_tromp_baseline.o blake.o sha256.o
 cpu_tromp_baseline.o : cpu_tromp_baseline.c blake.h param.h sha256.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c cpu_tromp_baseline.c
 
-# Test verifier (existing tool)
-test_verifier : test_verifier.o blake.o sha256.o
-	${CC} -o test_verifier test_verifier.o blake.o sha256.o ${LDFLAGS}
+# Test verifier — uses Tromp's blake2b to verify eq1927 reference solutions
+test_verifier : test_verifier.o equihash_tromp/blake/blake2b.o
+	${CC} -o test_verifier test_verifier.o equihash_tromp/blake/blake2b.o ${LDFLAGS}
 
-test_verifier.o : test_verifier.c blake.h param.h sha256.h
-	${CC} ${CPPFLAGS} ${CFLAGS} -c test_verifier.c
+test_verifier.o : test_verifier.c param.h equihash_tromp/blake/blake2.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -Iequihash_tromp/blake -c test_verifier.c
 
 # Blake2b comparison tool (existing)
 compare_blake2b : compare_blake2b.o blake.o
