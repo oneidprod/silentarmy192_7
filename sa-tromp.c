@@ -272,14 +272,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
     /* Zero coin protocol: 140-byte headernonce.
-     * Nonce at bytes 108-111 (u32 index [27]), per eq1927 equi.c:
-     *   ((u32*)headernonce)[27] = htole32(nonce)
-     * Block 1: bytes 0-127 (contains nonce). Block 2: bytes 128-139 (all zero).
+     * Nonce at bytes 128-131 (u32 index [32]), per equihash_tromp/equi.c:33:
+     *   ((u32*)headernonce)[32] = htole32(nonce)
+     * Block 1: bytes 0-127 (header, no nonce). Block 2: bytes 128-139 (nonce + zeros).
      * zcash_blake2b_update reads full 128-byte block so both must be [128]. */
     uint8_t headernonce_b1[128] = {0};
     uint8_t headernonce_b2[128] = {0};
     memcpy(headernonce_b1, header, 108);
-    ((uint32_t *)headernonce_b1)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
+    ((uint32_t *)headernonce_b2)[0] = htole32(nonce_idx);  /* nonce at bytes 128-131 */
     blake2b_state_t blake_gen;
     zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
     zcash_blake2b_update(&blake_gen, headernonce_b1, 128, 0);  /* block 1: bytes 0-127 */
