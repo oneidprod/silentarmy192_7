@@ -31,7 +31,7 @@ typedef uint32_t uint;
 #define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 40
+#define NSLOTS 32
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-39
 #define HASHBYTES_STAGE0 24
 
@@ -289,7 +289,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
     check_error(err, "buf_blake_st");
 
-    /* tree0: NBUCKETS * NSLOTS * sizeof(stage0_slot_t) = 1M * 40 * 28 = 1.07 GB */
+    /* tree0: NBUCKETS * NSLOTS * sizeof(stage0_slot_t) = 1M * 32 * 28 = 860 MB */
     cl_mem buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
                                       tree_size * sizeof(stage0_slot_t), NULL, &err);
     check_error(err, "buf_tree0");
