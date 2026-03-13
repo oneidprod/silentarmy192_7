@@ -12,9 +12,8 @@
 2. Edit → make the code change
 3. Test → run the test, check result
 4. Commit code → `git add <files> && git commit`
-5. Update this doc → append to Completed Steps, update Immediate Next Step
-6. Commit doc → `git add CLAUDE_OPUS_4.6.md && git commit`
-7. Report back → tell user what happened, wait for go-ahead
+5. Update this doc → append to Completed Steps, update Immediate Next Step (no separate commit)
+6. Report back → tell user what happened, wait for go-ahead
 
 ## Current Verified State (2026-03-06)
 
@@ -38,15 +37,19 @@
 - Batch size: 187K nonces (Beignet driver limit)
 
 ## Immediate Next Step
-**Investigate why Stage 2 produces 0 collisions in most batches.**
-- 50K test: Stage 2 = 39 collisions ✓
-- 1M test: Stage 2 = 0 in all batches ✗
-- This is the current blocker preventing cascade from reaching Stage 7.
+**Batch size is 90x too small for Equihash 192,7.**
+- Current: 187K nonces = 374K hashes per batch
+- Required: ~16.5M nonces = 33M hashes (2^25) for birthday bound
+- The 20-bit attr encoding limits batch to 1M hashes max
+- Even at 1M hashes, expected Stage 2 collisions ≈ 0.5 (not enough cascade)
+- Previous "Stage 7 candidates" were artifacts of the +2 offset bug (fake collisions)
+- **Need architectural change**: either wider attr encoding or different approach
 
 ## Completed Steps
 | # | Date | Commit | Description |
 |---|------|--------|-------------|
 | 1 | 2026-03-06 | cf4bfc3 | Macro fix: removed conflicting #defines from solution_extraction.c |
+| 2 | 2026-03-06 | 1137264 | XOR offset +2→+3 in all 7 stages + Stage 7 loop bound fix |
 
 ## History Reference
 - **CLAUDE_SONNET_4.5.md**: 2,852-line session log from Sonnet 4.5 (Mar 4-6)

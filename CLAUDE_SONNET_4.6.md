@@ -78,7 +78,104 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#3  Run your map tool, read CLAUDE_SONNET_4.6.md and PLAN_ACTIVE.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#12  Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+
+### ⚠️ Session 11 State (2026-03-13) — IN PROGRESS
+
+#### What was done this session
+- Confirmed two separate protocols (eq1927 vs nheqminer) — must NOT mix
+- Found working `test_verifier.c` on `solution-fix` branch
+- Ported it to `rewrite` branch: uses Tromp blake2b directly, verifies eq1927 solutions ✅
+- Commit: `81a5ab1` — test_verifier passes eq1927 -s -p "ZERO_PoW" -n 0
+
+#### Protocol reference (do NOT confuse these)
+| Tool | Blake setup | Nonce placement |
+|------|-------------|-----------------|
+| `eq1927` / `test_verifier` | `blake2b_update(headernonce, 140)` | byte 108, `[27]` |
+| `nheqminer_cpu_tromp` | `blake2b_update(header, 108)` + `blake2b_update(nonce, 32)` | separate 32-byte nonce |
+
+#### NEXT SESSION — START HERE
+
+**Step 1: Align sa-tromp's blake setup to nheqminer protocol**
+
+sa-tromp currently uses broken two-block setup. Change `mine_batch()` to:
+```c
+// nheqminer protocol: header (108 bytes) + nonce (32 bytes) separately
+uint8_t hdr[108] = {0};
+uint8_t nonce32[32] = {0};
+((uint32_t *)nonce32)[0] = htole32(nonce_idx);
+zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+zcash_blake2b_update(&blake_gen, hdr, 108, 0);
+zcash_blake2b_update(&blake_gen, nonce32, 32, 0);
+```
+Also check GPU kernel (`input.cl`) blake init matches.
+
+**Step 2: Verify sa-tromp solutions self-verify**
+```bash
+make sa-tromp && ./sa-tromp 5
+```
+Expect: solutions + VERIFIED OK
+
+**Step 3: Commit sa-tromp fix, then Phase 2 Stratum**
+Full Phase 2 plan: `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+#### IMPORTANT: sa-tromp verify function
+sa-tromp's `verify_equihash_full` must use the SAME protocol as mining (nheqminer).
+test_verifier uses eq1927 protocol — these are intentionally DIFFERENT tools for different purposes.
+- Source: `equihash_tromp/equi.c` line 33: `((u32*)headernonce)[32] = htole32(nonce)`
+- Both files already patched (changes NOT yet committed):
+  - `test_verifier.c` line 89: `((uint32_t *)headernonce_b2)[0]` ← DONE
+  - `sa-tromp.c` line 282: `((uint32_t *)headernonce_b2)[0]` ← DONE
+- Both files build successfully
+- **STOPPED** before running the cross-check test (context too high)
+
+#### NEXT SESSION — START HERE (no research needed, no git resets)
+
+**Step 1: Verify the changes are still in place**
+```bash
+grep -n "headernonce_b2\[0\]" sa-tromp.c test_verifier.c
+```
+Both lines should show `headernonce_b2)[0] = htole32(nonce_idx)`.
+
+**Step 2: Generate eq1927 reference solutions and cross-check test_verifier**
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep "^Solution" | head -1
+```
+Note the header eq1927 used. Then test_verifier needs: header_hex, solution_file, nonce.
+The header is all zeros ("0000...0000", 216 hex chars = 108 bytes) since eq1927 uses `"0x..."`.
+Run:
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep "^Solution" > /tmp/ref_solutions.txt
+# Build header string: eq1927 uses empty/zero header for -s mode
+# Feed to test_verifier — check test_verifier.c main() for exact argument format
+```
+
+**Step 3: Run sa-tromp and verify solutions**
+```bash
+./sa-tromp 5
+```
+Expect: solutions found + "VERIFIED OK"
+
+**Step 4: Commit if both pass**
+```bash
+git add sa-tromp.c test_verifier.c
+git commit -m "fix: nonce at byte 128 per eq1927 ground truth
+
+- sa-tromp.c + test_verifier.c: nonce moved from [27]=byte108 to [32]=byte128
+- Ground truth: equihash_tromp/equi.c line 33
+- Status: working
+- Next: Phase 2 Stratum integration"
+```
+
+**Step 5: Then start Phase 2 (Stratum)** — full plan at `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+#### PHASE 2 SUMMARY (after Phase 1 passes)
+New files: `compress_sol.c/.h`, `stratum.c/.h`
+Modified: `sa-tromp.c` (CLI + run_stratum_mode()), `Makefile`
+Key references (no re-research needed):
+- `~/zero-nheqminer/nheqminer/libstratum/ZcashStratum.cpp:34-98` — CompressArray port
+- `~/zero-nheqminer/nheqminer/libstratum/StratumClient.cpp:408-414` — submit format
+- Solution compression: cBitLen=24, output=400 bytes, bytePad=0
 
 ### Current State (2026-03-11, end of session 2)
 - Uncommitted changes: `_slot_sz` fix + doc updates (committing now)
