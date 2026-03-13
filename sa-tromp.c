@@ -31,7 +31,7 @@ typedef uint32_t uint;
 #define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 64
+#define NSLOTS 32
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
 
@@ -271,19 +271,10 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Zero coin protocol: 140-byte headernonce.
-     * Nonce at bytes 128-131 (u32 index [32]), per equihash_tromp/equi.c:33:
-     *   ((u32*)headernonce)[32] = htole32(nonce)
-     * Block 1: bytes 0-127 (header, no nonce). Block 2: bytes 128-139 (nonce + zeros).
-     * zcash_blake2b_update reads full 128-byte block so both must be [128]. */
-    uint8_t headernonce_b1[128] = {0};
-    uint8_t headernonce_b2[128] = {0};
-    memcpy(headernonce_b1, header, 108);
-    ((uint32_t *)headernonce_b2)[0] = htole32(nonce_idx);  /* nonce at bytes 128-131 */
     blake2b_state_t blake_gen;
     zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&blake_gen, headernonce_b1, 128, 0);  /* block 1: bytes 0-127 */
-    zcash_blake2b_update(&blake_gen, headernonce_b2,  12, 0);  /* block 2: bytes 128-139 */
+    zcash_blake2b_update(&blake_gen, header, 128, 0);
+    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
