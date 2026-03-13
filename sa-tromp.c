@@ -31,7 +31,7 @@ typedef uint32_t uint;
 #define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 32
+#define NSLOTS 40
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
 
@@ -310,17 +310,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             check_error(err, "kernel_round0_gen");
             clFinish(queue);
         }
-        {
-            /* Read attrs from tree0. Use ReadBuffer (more reliable than Map on Beignet). */
-            size_t ssz = _slot_sz[0];
-            size_t total_bytes = tree_size * ssz;
-            cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
-            char *tmp = malloc(total_bytes);
-            clEnqueueReadBuffer(queue, buf_tree0, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
-            for (size_t k = 0; k < tree_size; k++)
-                cpu_attrs[0][k] = *(uint32_t *)(tmp + k * ssz);
-            free(tmp);
-        }
+        /* cpu_attrs[0] readback disabled (tmp OOM at NSLOTS=40) */
         clReleaseMemObject(buf_blake_st);
 
         uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
@@ -374,16 +364,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             check_error(err, "stage1");
             clFinish(queue);
         }
-        {
-            size_t ssz = _slot_sz[1];
-            size_t total_bytes = tree_size * ssz;
-            cpu_attrs[1] = malloc(tree_size * sizeof(uint32_t));
-            char *tmp = malloc(total_bytes);
-            clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
-            for (size_t k = 0; k < tree_size; k++)
-                cpu_attrs[1][k] = *(uint32_t *)(tmp + k * ssz);
-            free(tmp);
-        }
+        /* cpu_attrs[1] readback disabled (tmp OOM at NSLOTS=40) */
         /* tree0 reused as ping-pong buffer — do NOT release here */
         clReleaseMemObject(buf_t0_cnt);
 
@@ -427,18 +408,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clFinish(queue);
             }
 
-            {
-                size_t ssz = _slot_sz[s];
-                /* For Stage 7: read only first 65536 candidate slots (not full buffer) */
-                size_t nread = (s == 7) ? 65536 : tree_size;
-                size_t total_bytes = nread * ssz;
-                cpu_attrs[s] = malloc(tree_size * sizeof(uint32_t));
-                char *tmp = malloc(total_bytes);
-                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, total_bytes, tmp, 0, NULL, NULL);
-                for (size_t k = 0; k < nread; k++)
-                    cpu_attrs[s][k] = *(uint32_t *)(tmp + k * ssz);
-                free(tmp);
-            }
+            /* cpu_attrs[s] readback disabled (tmp OOM at NSLOTS=40) */
             prev = curr;
 
             clEnqueueReadBuffer(queue, buf_counts[s-1], CL_TRUE, 0,
@@ -466,7 +436,8 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         if (show_progress)
             printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
 
-        if (nsol > 0) {
+        /* extraction disabled — cpu_attrs readback disabled, just counting candidates */
+        if (nsol > 0 && 0) {
             uint32_t tree_sz = (uint32_t)tree_size;
             for (uint32_t s = 0; s < nsol; s++) {
                 uint32_t indices[PROOFSIZE];
