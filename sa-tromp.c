@@ -275,10 +275,16 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
+    /* Build 140-byte headernonce: header (108 bytes) + nonce at byte 108 + zero pad.
+     * Matches eq1927 protocol: ((u32*)headernonce)[27] = htole32(nonce_idx)
+     * header param must be 108 bytes (version+prevhash+merkle+reserved+time+bits). */
+    uint8_t headernonce[ZCASH_BLOCK_HEADER_LEN] = {0};
+    memcpy(headernonce, header, 108);
+    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);  /* byte 108 */
+
     blake2b_state_t blake_gen;
     zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&blake_gen, header, 128, 0);
-    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
+    zcash_blake2b_update(&blake_gen, headernonce, ZCASH_BLOCK_HEADER_LEN, 0);
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
@@ -622,8 +628,7 @@ int main(int argc, char *argv[]) {
     init_opencl();
     printf("OpenCL ready\n\n"); fflush(stdout);
 
-    uint8_t header[ZCASH_BLOCK_HEADER_LEN] = {0};
-    memcpy(header, "test_block_header_data_192_7", 28);
+    uint8_t header[108] = {0};  /* 108-byte header prefix; nonce embedded in mine_batch */
 
     clock_t overall_start = clock();
     int total_solutions = 0;
