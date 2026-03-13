@@ -180,6 +180,36 @@ The original silentarmy had 32-byte nonce at bytes 108-139 (Zcash). Zero coin ma
 - Full plan: `/home/mine/.claude/plans/sunny-sprouting-codd.md`
 - **NEXT**: Start Session 7 with implementation of test_verifier fix (no research needed)
 
+### Session 8 (continued) — Nonce placement investigation
+
+**CURRENT STATE (broken, needs fix next session):**
+- sa-tromp.c: nonce at bytes 108-111 (`headernonce_b1[27]`) — matches eq1927 solver (`equi_miner.cpp [27]`)
+- test_verifier.c: same — nonce at bytes 108-111
+- BUT: test_verifier still fails on eq1927 reference solutions — root cause not yet isolated
+- **DO NOT CHANGE NONCE PLACEMENT** without first verifying against nheqminer_cpu_tromp
+
+**Reference tools:**
+- `~/zero-nheqminer/Linux_cmake/nheqminer_cpu_tromp/nheqminer_cpu_tromp` — working cpu_tromp 192,7 miner
+  - Usage: `-b 1 -e 0 -t 1` (or check docs first)
+- `./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0` — generates reference solutions
+
+**LESSON LEARNED:** Never align test_verifier to sa-tromp. test_verifier must always verify against eq1927/nheqminer reference solutions FIRST. sa-tromp is what gets fixed to match.
+
+**Next session start:**
+1. Check nheqminer_cpu_tromp docs/usage: `~/zero-nheqminer/Linux_cmake/nheqminer_cpu_tromp/nheqminer_cpu_tromp -b 1 -e 0 -t 1`
+2. Look at nheqminer source for nonce embedding (grep headernonce in ~/zero-nheqminer/)
+3. Fix test_verifier to match nheqminer/eq1927 reference — verify it passes eq1927 solutions
+4. Then fix sa-tromp to match same protocol
+
+### Session 8 Progress (2026-03-13)
+- Fixed blake2b setup: two-block 140-byte headernonce, nonce at byte 128
+- Use headernonce_b1[128] + headernonce_b2[128] (zero-padded) for safe buffer reads
+- test_verifier cross-check PASSES with new protocol
+- Removed core+mine_long2.txt from git history (filter-branch); pushed to GitHub
+- Commits: 07bc1f8, d1ea360
+- **Status: Zero coin protocol correct. Pipeline verified. GitHub up to date.**
+- **NEXT**: nheqminer integration / pool testing
+
 ### Sub-task checklist:
 - [x] Pipeline runs without OOM (double-buffer)
 - [x] Nonce variation working
@@ -190,7 +220,10 @@ The original silentarmy had 32-byte nonce at bytes 108-139 (Zcash). Zero coin ma
 - [x] canonical_sort before verify — ordering invariant satisfied
 - [x] verify_equihash_full passes — solutions confirmed valid
 - [x] debug prints cleaned; production-ready output
-- [ ] **NEXT**: Pool testing via nheqminer integration
+- [x] Zero coin protocol fix: two-block 140-byte headernonce, nonce at byte 128
+- [x] test_verifier cross-check passes with new protocol
+- [x] Large files removed from git history; pushed to GitHub (rewrite branch)
+- [ ] **NEXT**: Direct pool submission via Stratum protocol in sa-tromp (no nheqminer)
 
 ## Completed Steps
 | # | Date | Commit | Description |

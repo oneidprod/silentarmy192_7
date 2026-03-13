@@ -78,15 +78,18 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header, uint32_
     blake2b_state_t ctx;
     uint8_t hash[PARAM_N / 8];
 
-    /* Zero coin protocol: 140-byte headernonce, nonce at byte 128.
-     * Two zero-padded 128-byte blocks (zcash_blake2b_update reads 128 bytes). */
+    /* Zero coin protocol: 140-byte headernonce.
+     * Nonce at bytes 108-111 (u32 index [27]), per eq1927 equi.c line:
+     *   ((u32*)headernonce)[27] = htole32(nonce)
+     * Block 1: bytes 0-127 (contains nonce). Block 2: bytes 128-139 (all zero).
+     * zcash_blake2b_update reads full 128-byte block so both must be [128]. */
     uint8_t headernonce_b1[128] = {0};
     uint8_t headernonce_b2[128] = {0};
     memcpy(headernonce_b1, header, 108);
-    ((uint32_t *)headernonce_b2)[0] = htole32(nonce_idx);
+    ((uint32_t *)headernonce_b1)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
     zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&ctx, headernonce_b1, 128, 0);  /* block 1 */
-    zcash_blake2b_update(&ctx, headernonce_b2,  12, 0);  /* block 2 */
+    zcash_blake2b_update(&ctx, headernonce_b1, 128, 0);  /* block 1: bytes 0-127 */
+    zcash_blake2b_update(&ctx, headernonce_b2,  12, 0);  /* block 2: bytes 128-139 */
 
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
