@@ -1,8 +1,8 @@
 # Claude Governance — Equihash 192,7
 
 ## Sound Notification
-After finishing a task or when waiting for my input, always run this command to notify me:
-Linux: notify-send 'Claude' 'I am ready for input' --icon=info
+## After finishing a task or when waiting for my input, always run this command to notify me:
+## Linux: notify-send 'Claude' 'I am ready for input' --icon=info
 
 ## Anti-Spiral Rules
 - **Max 2 hours per investigation** before mandatory commit + reassessment
@@ -41,10 +41,11 @@ No git commit needed for the reset itself.
 Commit every 30-45 min or at logical breakpoints.
 
 ## Context Management
-- Monitor context usage each turn; if at or above 50%, stop immediately
-- Commit all in-progress work, update PLAN_ACTIVE.md and CLAUDE_SONNET_4.6.md with current state
+- **MANDATORY: Run `/context` at the START of every turn before doing any work**
+- If at or above 40%: warn the user immediately before proceeding
+- If at or above 50%: stop immediately — commit all in-progress work, update CLAUDE_SONNET_4.6.md
 - Notify user: "Context at ~X% — stopping to preserve session limit. Committed checkpoint."
-- Do NOT continue coding; wait for user to start a new session
+- Do NOT continue coding after 50%; wait for user to start a new session
 
 ## Active Session Doc
 See [CLAUDE_SONNET_4.6.md](CLAUDE_SONNET_4.6.md) for current state, active plan, and next step.
