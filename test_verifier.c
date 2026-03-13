@@ -78,13 +78,15 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header, uint32_
     blake2b_state_t ctx;
     uint8_t hash[PARAM_N / 8];
 
+    /* Zero coin protocol: 140-byte headernonce, nonce at byte 128.
+     * Two zero-padded 128-byte blocks (zcash_blake2b_update reads 128 bytes). */
+    uint8_t headernonce_b1[128] = {0};
+    uint8_t headernonce_b2[128] = {0};
+    memcpy(headernonce_b1, header, 108);
+    ((uint32_t *)headernonce_b2)[0] = htole32(nonce_idx);
     zcash_blake2b_init(&ctx, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    /* Match sa-tromp's nonce embedding: zero-padded 128-byte block with nonce at bytes 0-3 */
-    zcash_blake2b_update(&ctx, header, 128, 0);
-    uint8_t nonce_block[128] = {0};
-    uint32_t nonce_le = htole32(nonce_idx);
-    memcpy(nonce_block, &nonce_le, 4);
-    zcash_blake2b_update(&ctx, nonce_block, 4, 0);
+    zcash_blake2b_update(&ctx, headernonce_b1, 128, 0);  /* block 1 */
+    zcash_blake2b_update(&ctx, headernonce_b2,  12, 0);  /* block 2 */
 
     return eh_verifyrec(&ctx, indices, hash, PARAM_K);
 }
@@ -99,14 +101,12 @@ int main(int argc, char **argv) {
     if (argc >= 5 && strcmp(argv[3], "-n") == 0)
         nonce_idx = (uint32_t)atoi(argv[4]);
 
-    // Parse header (128 bytes = 256 hex chars)
+    // Parse header (108 bytes = 216 hex chars — first 108 bytes of block header)
     const char *header_hex = argv[1];
-    uint8_t header[128];
-    if (strlen(header_hex) != 256) {
-        fprintf(stderr, "Header must be 256 hex chars (128 bytes) (got %zu)\n", strlen(header_hex));
-        return 1;
-    }
-    for (int i = 0; i < 128; i++) {
+    uint8_t header[108] = {0};
+    size_t hlen = strlen(header_hex);
+    if (hlen > 216) hlen = 216;
+    for (size_t i = 0; i < hlen / 2; i++) {
         sscanf(header_hex + 2*i, "%2hhx", &header[i]);
     }
 
@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
     }
     fclose(f);
 
-    printf("Testing verification with header (128 bytes) and %d indices, nonce=%u...\n", 1 << PARAM_K, nonce_idx);
+    printf("Testing verification with header and %d indices, nonce=%u...\n", 1 << PARAM_K, nonce_idx);
     printf("Header: %.32s...\n", header_hex);
     printf("First few indices: %x %x %x %x\n",
            indices[0], indices[1], indices[2], indices[3]);
