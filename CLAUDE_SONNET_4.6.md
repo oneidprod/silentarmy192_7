@@ -78,9 +78,31 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#12  Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#16  Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 11 State (2026-03-13) — IN PROGRESS
+### ✅ Session 15 State (2026-03-13) — COMPLETE
+
+#### What was done
+- Diagnosed extraction failure: first-pass `nsol` was stale — re-run has different slot ordering
+- Fix: re-read `nsol` from `buf_counts[6]` after re-run Stage 7 completes
+- Removed debug prints
+- Commit: `d7dbdf8` — VERIFIED OK solutions found (~1/5 nonces)
+- yield ~0.1-0.2/nonce at NSLOTS=40 (expected birthday math)
+
+#### NEXT SESSION — START HERE
+
+**Goal**: Phase 2 Stratum integration. Full plan at `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+**Step 1: Cross-check with test_verifier**
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep "^Solution" | head -1
+./sa-tromp 20 2>/tmp/sa.txt; grep "^Solution" /tmp/sa.txt | head -1
+```
+Compare solutions format. Then build test_verifier and confirm sa-tromp solutions pass.
+
+**Step 2: Start Phase 2 Stratum** — see `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+### ⚠️ Session 11 State (2026-03-13) — IN PROGRESS (historical)
 
 #### What was done this session
 - Confirmed two separate protocols (eq1927 vs nheqminer) — must NOT mix
@@ -115,6 +137,108 @@ Also check GPU kernel (`input.cl`) blake init matches.
 make sa-tromp && ./sa-tromp 5
 ```
 Expect: solutions + VERIFIED OK
+
+#### Session 14 Progress (2026-03-13)
+
+**Commit**: `71ee0d3` — re-run extraction approach implemented but broken
+
+**What was done:**
+- NSLOTS=40 confirmed working: 1000+ Stage 7 candidates per nonce ✅
+- Added `kernel_extract_attrs` to input.cl: compact GPU attr readback (4B/slot vs 28B/slot)
+- Implemented re-run pipeline: after first pass (no readback), re-run all stages with compact readback
+- Fixed non-determinism bug: cpu_attrs[0] now from scratch_a (re-run) not buf_tree0 (first pass)
+- All 8 cpu_attrs now from the SAME re-run (consistent slot ordering)
+
+**Current status: 0 extracted (distinct)**
+- `extract_solution` returns 0 for ALL candidates
+- No OOB errors printed to stderr (listindices doesn't print)
+- Debug: 49-112 candidates have src_bucket!=0 (rest are overflow false-positives from bucket 0)
+- The non-bucket-0 candidates still fail extraction
+- Root cause NOT yet isolated: either (a) cnt < 128 (OOB in listindices) or (b) duplicate leaves
+
+**NEXT SESSION — What to check first:**
+
+**Step 1: Determine if extract_solution fails due to OOB or duplicates**
+```bash
+./sa-tromp 1 2>/tmp/err.txt; cat /tmp/err.txt | head -20
+```
+listindices prints to stderr on OOB: `"listindices: OOB flat=%u tree_size=%u round=%d"`.
+If no OOB messages → all 128 indices found but are duplicates → tree structure wrong.
+If OOB messages → backtracking goes out of bounds → attr decoding bug.
+
+**Step 2: If OOB — check flat_idx_of with NSLOTS=40**
+`flat_idx_of(attr, which)` in solution_extraction.c:
+```c
+uint32_t bucket = attr >> 12;
+uint32_t slot   = which ? (attr & 0x3F) : ((attr >> 6) & 0x3F);
+return bucket * NSLOTS + slot;
+```
+With NSLOTS=40, `slot` from `attr & 0x3F` can be 0..63. If slot >= 40, flat index overflows.
+Stage 1+ kernels cap `nslots = min(count, NSLOTS_STAGE1)` = 40. So j < 40 always.
+But the attr stores `j` in bits 5:0 — 6 bits, values 0..63. Since j < 40, max value is 39. ✓
+This should be fine unless the kernel writes wrong j values.
+
+**Step 3: If duplicates — verify re-run is consistent with first pass**
+Add a test: for the first non-bucket-0 candidate, print all 128 leaf indices and check if any repeat.
+Also verify: pick one leaf xi, compute `eh_genhash(blake_gen, xi, hash)` and print hash[0..5].
+Check if Stage 1 collision actually holds: hash_xi[0..2] should match hash_xj[0..2] for a Stage 1 pair.
+
+**Step 4: Alternative approach if re-run keeps failing**
+The re-run approach has fundamental complexity. Consider:
+- Inline readback with `kernel_extract_attrs` during first pass
+- Peak RAM: 2×tree(2.24GB GPU) + compact(0.16GB transient) + cpu_attrs(1.28GB CPU) = 3.68GB → OOM
+- BUT: the compact buf is only transient (allocated/freed per stage)
+- AND: at NSLOTS=40 with 3.1GB available, this IS too much
+- REAL FIX: reduce memory by using `kernel_extract_attrs` inline AND accepting NSLOTS=36
+  Wait — NSLOTS=36 was confirmed OOM in Session 13. Minimum that works is NSLOTS=40.
+- Alternative: Test NSLOTS=38 (between 32 and 40) — may produce solutions with cascade barely alive
+  At NSLOTS=38: 2×(1M×38×28)=2.13GB + compact(152MB) + cpu_attrs(8×152MB=1.22GB) = 3.50GB → still OOM
+
+**Real fix**: Use inline readback but free tree buffers as soon as they're no longer needed.
+At each stage, after running the kernel and extracting attrs, release the INPUT tree (not needed anymore).
+Peak: output_tree(1.12GB) + compact(0.16GB transient) + cpu_attrs(growing).
+Max at stage7: 1.12 + 0.16 + 1.28 = 2.56GB — FITS in 3.1GB!
+NSLOTS can be 40. No re-run needed.
+
+**This is the correct approach:**
+1. Stage 0: alloc tree0, run round0_gen, EXTRACT_ATTRS(0,tree0), DO NOT release tree0 yet.
+2. Stage 1: alloc tree1, run Stage1(tree0→tree1), EXTRACT_ATTRS(1,tree1), release tree0.
+3. Stage 2: alloc tree0 (reuse name), run Stage2(tree1→tree0), EXTRACT_ATTRS(2,tree0), release tree1.
+4. ... each stage releases its input after attrs extracted
+5. Peak: current output tree (1.12GB) + compact (0.16GB transient) + accumulated attrs (max 1.28GB)
+6. Max total: 1.12 + 0.16 + 1.28 = 2.56GB — fits!
+
+This requires restructuring mine_batch() to:
+- NOT use ping-pong with 2 live trees simultaneously (but we still need the previous tree alive while running the NEXT stage)
+- Actually: input tree (previous stage) + output tree (current stage) BOTH needed during kernel run
+- After kernel completes + attrs extracted: release input. Alloc new output for next stage.
+- Peak DURING kernel run: input(1.12) + output(1.12) = 2.24GB GPU + compact(0.16) + growing cpu_attrs
+- At stage7 kernel run: input(1.12) + output(1.12) + compact(0.16) + 6×attrs(0.96) = 3.48GB → OOM!
+
+So same problem at Stage 7 kernel run. The two trees must coexist during the kernel.
+
+**Definitive approach**: Accept 2 trees must coexist, but minimize cpu_attrs size.
+Actually at stage 7 during the kernel: we have 2 trees (2.24GB) + compact (just allocated = 0.16GB) +
+cpu_attrs[0..5] already accumulated (6×0.16=0.96GB) = 3.36GB → barely fits in 3.1GB? No, 3.36 > 3.1.
+
+**Absolute minimum viable**: NSLOTS that makes 2×tree + 8×compact_attrs ≤ 3.1GB
+2×(1M×N×28) + 8×(1M×N×4) + 0.16GB_compact_transient ≤ 3.1GB
+N×(56M + 32M) + 160MB ≤ 3100MB
+N×88MB ≤ 2940MB
+N ≤ 33.4 → **NSLOTS=33** is the maximum that fits
+
+But at NSLOTS=33 the cascade likely dies (similar to NSLOTS=32).
+This is a hard constraint imposed by the 3.1GB shared memory.
+
+**CONCLUSION for next session:**
+The re-run approach is the only viable memory strategy. Fix it properly:
+1. Capture stderr to verify OOB vs duplicate failure
+2. If OOB: fix flat_idx_of or kernel attr encoding
+3. If duplicate: the re-run is internally consistent (all 8 stages from same run) — duplicates mean
+   genuine overflow artifacts in the Stage 7 candidates, which is expected. The real solutions
+   should NOT have duplicates. If 0 out of ~50 non-bucket-0 candidates have distinct leaves,
+   there may be a structural bug in the attr encoding for NSLOTS=40 (vs NSLOTS=32 where flat_idx_of
+   was tested).
 
 **Step 3: Commit sa-tromp fix, then Phase 2 Stratum**
 Full Phase 2 plan: `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
@@ -164,7 +288,7 @@ test_verifier uses eq1927 protocol — these are intentionally DIFFERENT tools f
 - **Hypothesis**: With NSLOTS=32 (vs NSLOTS=40 at 703dd24), the cascade dies before Stage 7 produces real XOR=0 pairs. Need NSLOTS=40 but that OOMd before.
 - **Key insight**: At 703dd24, cpu_attrs readback was NOT present (added later in 9f6d4cd). That's why NSLOTS=40 fit in RAM then but causes OOM now.
 
-#### NEXT SESSION — START HERE
+#### NEXT SESSION — START HERE (Session 14 state)
 
 **Goal**: Get solutions like 703dd24 did.
 
