@@ -129,15 +129,57 @@ test_verifier uses eq1927 protocol — these are intentionally DIFFERENT tools f
 - Both files build successfully
 - **STOPPED** before running the cross-check test (context too high)
 
-#### NEXT SESSION — START HERE (no research needed, no git resets)
+#### Session 12 Progress (2026-03-13)
 
-**Step 1: Verify the changes are still in place**
+- Fixed nonce placement in sa-tromp.c: `headernonce_b1[27]` → `headernonce_b2[0]` (byte 108 → 128)
+- Matches eq1927 ground truth: `equihash_tromp/equi.c:33 ((u32*)headernonce)[32] = htole32(nonce)`
+- Commit: `d32502f`
+- **GPU driver hung** after earlier killed runs — cannot test until driver restarted
+- test_verifier unchanged (already correct, passes eq1927 reference)
+
+#### Session 12 continued (2026-03-13)
+
+- OOM root cause: `cpu_attrs` tmp readback (1.07GB CPU) was added AFTER NSLOTS was tuned to 40
+- Fix: NSLOTS 40→32 in sa-tromp.c + input.cl — commit `68516bd`
+- Pipeline now runs without OOM
+- **NEW BUG**: 0 valid solutions. Stage 7 shows 496 candidates (nonces 0,2,3,4) or 46 (nonce 1)
+  496 is suspicious — likely a SLOTBITS encoding mismatch (SLOTBITS still encodes for 40 slots)
+- `SLOTBITS 6` can hold 0-63 — fine for 32. But `extract_solution` may have hardcoded slot math.
+
+#### Session 13 Progress (2026-03-13)
+
+- **Investigated 0 solutions root cause** — initially suspected NSLOTS=32 overflow (475K buckets)
+- **Attempted NSLOTS 32→64** — OOM killed (GPU tree bufs = 3.76GB > 3.1GB available)
+- **RAM budget confirmed**: Intel iGPU shares CPU/GPU RAM. Available = 3.1GB. Peak at NSLOTS=32 = ~2.95GB (fits). NSLOTS=36+ = OOM.
+- **Key finding**: NSLOTS=32 overflow is NOT the root cause. Session 5 (commit `703dd24`) produced verified solutions WITH 475K overflow at NSLOTS=40. Overflow is expected/tolerable.
+- **Real suspect**: blake2b state mismatch between GPU and CPU verify — nonce protocol changed heavily in sessions 8-12.
+- **Current state**: sa-tromp.c + input.cl have NSLOTS=64 (broken, OOM). Must revert to 32.
+
+#### NEXT SESSION — START HERE
+
+**Step 1: Revert NSLOTS 64→32**
 ```bash
-grep -n "headernonce_b2\[0\]" sa-tromp.c test_verifier.c
+# In sa-tromp.c line 34: NSLOTS 64 → 32
+# In input.cl line 1153: NSLOTS_STAGE1 64 → 32
+make clean && make sa-tromp
+./sa-tromp 1
 ```
-Both lines should show `headernonce_b2)[0] = htole32(nonce_idx)`.
+Expected: no OOM, some candidates, hopefully VERIFIED OK.
 
-**Step 2: Generate eq1927 reference solutions and cross-check test_verifier**
+**Step 2: If still 0 solutions — compare blake init to last working commit**
+```bash
+git show 703dd24:sa-tromp.c | grep -A 20 "Phase 1"
+```
+Compare `buf_blake_st` upload (GPU blake state) vs `blake_gen` used by CPU verify.
+If they differ → that's the bug.
+
+**Step 3: (Old Step 2) Run sa-tromp 5 and check if solutions found**
+```bash
+./sa-tromp 5
+```
+Expect: solutions + "VERIFIED OK".
+
+**Step 3: Cross-check via test_verifier** — generate eq1927 reference solutions and cross-check test_verifier
 ```bash
 ./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep "^Solution" | head -1
 ```

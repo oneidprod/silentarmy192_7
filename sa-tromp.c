@@ -31,8 +31,8 @@ typedef uint32_t uint;
 #define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 32
-#define SLOTBITS 6    // log2(64); 6 bits holds 0-39
+#define NSLOTS 64
+#define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
 
 /* Define htole32 for little-endian conversion if not available */
