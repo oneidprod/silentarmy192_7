@@ -1482,12 +1482,14 @@ void kernel_round0_gen(
     __global ulong *blake_state,       /* 8 x ulong pre-initialized state (after hdr block1) */
     __global stage0_slot_t *tree0,     /* NBUCKETS_STAGE1 * NSLOTS_STAGE1 slots */
     __global uint *tree0_counts,       /* atomic slot counters [NBUCKETS_STAGE1] */
-    uint nonce)                        /* mining nonce (goes into m[0] low 32 bits) */
+    uint nonce)                        /* unused: nonce is already in blake_state */
 {
     uint i = get_global_id(0);
-    /* eq1927/Tromp standard block 2 layout:
-     *   bytes 128-131: nonce (m[0] low 32 bits)
-     *   bytes 132-135: blake-call index i (m[1] high 32 bits = word1)
+    /* Block 2 layout (matches Tromp genhash streaming buffer):
+     *   bytes 0-3:  nonce (little-endian uint32) → m[0] low 32 bits
+     *   bytes 4-11: zeros                        → m[0] high 32 bits = 0
+     *   bytes 8-11: zeros                        → m[1] low 32 bits = 0
+     *   bytes 12-15: htole32(i/2)                → m[1] high 32 bits
      * blake_state = h after block1 (bytes 0-127 of headernonce, no nonce) */
     ulong word0 = (ulong)nonce;        /* m[0] = nonce in low 32 bits */
     ulong word1 = (ulong)i << 32;      /* m[1] = index in high 32 bits */
@@ -1501,12 +1503,12 @@ void kernel_round0_gen(
     v[10] = blake_iv[2];    v[11] = blake_iv[3];
     v[12] = blake_iv[4];    v[13] = blake_iv[5];
     v[14] = blake_iv[6];    v[15] = blake_iv[7];
-    // 140-byte headernonce + 4-byte index = 144
+    /* 140-byte headernonce + 4-byte index = 144 total bytes hashed */
     v[12] ^= 144;
     v[14] ^= (ulong)-1;
 
     /* 12 BLAKE2b rounds using sigma table — matches CPU blake.c exactly.
-     * m[] = {word0, word1, 0, 0, ..., 0} (16 ulongs, only m[0] and m[1] non-zero) */
+     * m[] = {word0, word1, 0, ..., 0} (16 ulongs, m[0] and m[1] non-zero) */
     __constant uchar blake2b_sigma[12][16] = {
         {  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 },
         { 14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3 },

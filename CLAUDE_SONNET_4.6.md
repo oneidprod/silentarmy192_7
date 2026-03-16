@@ -78,9 +78,79 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#21 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#24 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 21 State (2026-03-16) — IN PROGRESS
+### ⚠️ Session 23 State (2026-03-16) — IN PROGRESS
+
+#### Goal
+Fix blake convention to match Tromp/eq1927 standard for pool compatibility.
+
+#### What was done
+- Changed `mine_batch`: builds 140-byte headernonce with nonce at bytes 128-131
+- Changed GPU `kernel_round0_gen`: reverted to `word0=nonce, word1=i<<32` (correct Tromp block-2 layout)
+- Changed CPU `eh_genhash` + `eh_verifyrec` + `verify_equihash_full`: switched from `blake2b_state_t` (silentarmy) to `blake2b_state` (Tromp) for proper multi-block blake support
+- `tromp_st` built from `blake2b_update(headernonce, 128)` (block1 only, no nonce in state)
+- Nonce still passed as kernel arg3 → GPU `word0 = nonce` ✓
+- CPU `eh_genhash`: `message = {nonce, g<<32}`, `blake2b_update(&st, message, 16)` then `blake2b_final`
+
+#### Current status
+- Nonce IS varying (different candidate counts per nonce) ✅
+- Extraction: 0 distinct solutions across 20 nonces ❌
+- Verbose output shows 0 extracted for all candidates
+
+#### Root cause hypothesis
+The extraction returning 0 may be because:
+1. The `extract_solution` function is failing — possibly same OOB/duplicate issue from session 14
+2. OR the verification using Tromp blake2b doesn't match GPU hashes — `eh_genhash` using `blake2b_update(message, 16)` on a state with `t[0]=128, buflen=0` → finalizes at 144 bytes total, matching GPU `v[12]^=144`
+
+#### Key question: Is extraction failing (0 extracted) or verification failing (extracted but 0 verified)?
+
+The output shows "0 extracted (distinct)" — so `extract_solution` itself returns 0. The verification isn't even reached.
+
+#### Next session plan
+
+**Step 1: Revert verbose debug to check extract_solution**
+The `n_extracted==1` verbose flag was added but nonce 1,2 show "0 extracted" so extract_solution never returns true.
+
+Check: is the extraction bug new (from this session's changes) or pre-existing?
+
+**Step 2: Test with `git stash` / compare to b9d02b1**
+```bash
+git stash
+make sa-tromp && ./sa-tromp 5  # should show ~2/5 nonces with VERIFIED OK
+git stash pop
+```
+If b9d02b1 still finds verified solutions → our changes broke extraction.
+If b9d02b1 also 0 extracted → pre-existing extraction bug unrelated to blake fix.
+
+**Step 3: If extraction is broken by our changes**
+Look at what changed in `mine_batch` that affects extraction. The only mining-path change is `blake2b_update(headernonce, 128)` vs `blake2b_update(hdr128, 128)`. These should produce identical h[8] since both are 128 zero-ish bytes (header=zeros+zeros). Double-check by adding a print of `blake_gen.h[0]` before and after.
+
+**Step 4: Once extraction works again**
+Cross-check: `./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 | grep Solution` vs sa-tromp nonce 0 solutions. If they match → pool compatible ✓.
+
+#### Current uncommitted changes
+- `input.cl`: kernel comment + MSG macro (word1 still present, correct)
+- `sa-tromp.c`: eh_genhash uses blake2b_state (Tromp), mine_batch uses headernonce[140], tromp_st from update(128), verify uses &tromp_st
+- verbose mode added for first candidate (should remove before final commit)
+
+### ✅ Session 22 State (2026-03-16) — COMPLETE
+
+#### What was done
+- Replaced hardcoded 12-round unroll in `kernel_round0_gen` with sigma-table loop (matches blake.c exactly)
+- Removed all session 21 debug prints from sa-tromp.c
+- Result: GPU/CPU hash mismatch resolved — nonce 0 VERIFIED OK, nonce 3 VERIFIED OK
+- Commit: b9d02b1
+
+#### Root cause of session 21 mismatch
+The hardcoded 12-round unroll had a Beignet-specific bug. The sigma-table loop guarantees bit-exact agreement with CPU eh_genhash by using the same sigma table as blake.c.
+
+#### Remaining known issue
+sa-tromp solutions do NOT match eq1927 for nonce 0 (different solutions). This is the documented `word1=(ulong)i<<32` non-standard layout vs Tromp's eq1927 which uses a different message layout. GPU and CPU are internally consistent. This only matters for pool compatibility (Phase 2).
+
+#### Performance: 2/5 nonces found solutions (~2.9s/nonce on Intel iGPU)
+
+### ⚠️ Session 21 State (2026-03-16) — SUPERSEDED BY SESSION 22
 
 #### What was done
 - Confirmed Session 20's arg3 fix (545f107) is in place and re-run runs without OOM.
