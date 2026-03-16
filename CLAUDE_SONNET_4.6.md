@@ -78,9 +78,120 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#19 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#21 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 18 State (2026-03-16) — IN PROGRESS
+### ⚠️ Session 21 State (2026-03-16) — IN PROGRESS
+
+#### What was done
+- Confirmed Session 20's arg3 fix (545f107) is in place and re-run runs without OOM.
+- sa-tromp 3 nonces: 1404/917/1245 candidates → 1/0/0 extracted → **0 verified**
+- Added debug instrumentation to trace attr chain and GPU vs CPU hash values.
+
+#### ROOT CAUSE IDENTIFIED: blake hash mismatch GPU ≠ CPU
+
+Key diagnostic data (nonce 0):
+- Stage0 slot0: attr=0x4ee4=20196, GPU hash bytes[4..6] = `00 00 0c`
+- CPU `eh_genhash(xi=20196, nonce=0)` = `7b 1c 1e` — **completely different**
+- Manual C verification (using same sigma table): also gives `7b 1c 1e`
+- GPU blake_state sent = CPU blake_gen.h = identical (confirmed by readback)
+
+So: same blake state, same message (nonce=0, g=10098), but GPU and CPU produce different hashes.
+
+#### What rules out
+- ✅ blake_gen.h correctly built (confirmed by readback: GPU receives exact same 8 h-values)
+- ✅ `_slot_sz` matches Beignet's actual `sizeof(stageN_slot_t)` (confirmed with test program)
+- ✅ sigma schedule in CPU matches GPU rounds 1-12 (checked rounds 1,2,3,4,6,7 manually)
+- ✅ v[12] ^= 144 correct on both sides
+- ✅ EXTRACT_ATTRS extracts attrs at correct flat positions
+
+#### Remaining suspects
+There are **two** `kernel_round0` implementations in input.cl:
+1. `kernel_round0` (line 302 of _kernel.h, old silentarmy kernel) — reads nonce from `blake_state[8]`, uses old NR_SLOTS/SLOT_LEN hash table format
+2. `kernel_round0_gen` (line 1240 of _kernel.h, our new kernel) — takes `uint nonce` as arg3, writes to `stage0_slot_t`
+
+Both are compiled. `clCreateKernel(program, "kernel_round0_gen", &err)` should pick the right one.
+
+**Most likely Beignet bug**: The GPU kernel computes rounds differently than the CPU's sigma table. Beignet may have a known bug with certain BLAKE2b constructs, OR the hardcoded round unrolling in `kernel_round0_gen` has a subtle error that only manifests at runtime (not visible by reading the source).
+
+#### Next session plan
+
+**Step 1: Verify which kernel is actually executing**
+Add a sentinel: change `kernel_round0_gen` to write a fixed test value (e.g., attr=0xDEADBEEF) to slot 0 of bucket 0, build, run, check if slot0 attr == 0xDEADBEEF. If yes, our kernel IS being called. If no, Beignet is caching old kernel.
+
+**Step 2: Isolate the hash discrepancy**
+Add a small test kernel `kernel_hash_test` that:
+- Takes same blake_state + nonce=0 + g=10098
+- Runs the 12 rounds
+- Writes hh0 (first 8 bytes of output) to a debug buffer
+Run it, read back, compare to CPU output `7b1c1e...`
+
+This eliminates Beignet caching as a variable and isolates exactly where GPU diverges.
+
+**Step 3: Fix the round that diverges**
+Once we know WHICH round produces the first difference, we can fix the hardcoded unrolling.
+
+**Alternatively (faster):** Replace the hardcoded 12-round unroll in `kernel_round0_gen` with a loop using the sigma table (same as `kernel_round0` already does). This guarantees agreement with the CPU's sigma-table-based `zcash_blake2b_update`.
+
+#### Debug state — clean up before Step 1
+sa-tromp.c has debug prints added this session. Remove them before writing new test kernel.
+Current debug instrumentation is at:
+- Lines ~611-628 (cand0 attr chain dump)
+- Lines ~589-604 (scratch_b dump after stage7)
+- Lines ~590-614 (cpu_attrs[0], cpu_attrs[1], xi0/xi1 hash check, stage0 slot0 raw, blake_gen.h dump, GPU blake_state readback, manual xi=20196 hash)
+
+### ⚠️ Session 20 State (2026-03-16) — SUPERSEDED BY SESSION 21
+
+#### KEY FINDING: eq1927 blake block 2 layout
+After deep analysis of eq1927 `setheader` + `genhash`, the correct block 2 layout is:
+- **m[0] low 32 bits** = nonce (bytes 128-131 of headernonce)
+- **m[1] high 32 bits** = `(ulong)g << 32` where g = blake-call index (idx/2)
+- blake_state = h after block1 ONLY (bytes 0-127, header without nonce)
+- v[12] ^= 144 = 140+4 total bytes
+
+The old code had m[1]=g (index) but NO nonce in m[0]. That's why all nonces gave same hashes.
+
+#### What was done this session
+- **Confirmed**: `blake2b_update(headernonce,140)` leaves bytes 128-139 in buffer → `tromp_st.h` = h after block1 only → nonce NOT in h → all nonces same
+- **Fix committed** (`6f28f70`, WIP):
+  - `kernel_round0_gen`: added `uint nonce` as arg3; `word0=(ulong)nonce`, `word1=(ulong)i<<32`; all 12 sigma rounds updated for both m[0] and m[1]; v[12]^=144
+  - `kernel_round0` (legacy, unused): same sigma fix + word0 from blake_state[8]
+  - `mine_batch`: blake_state = h after block1 (128 bytes), nonce passed as kernel arg3
+  - `eh_genhash`: `message[0]=nonce`, `message[1]=g<<32`, `st.bytes=128`, update 16 bytes
+  - `verify_equihash_full`/`eh_verifyrec`: nonce threaded through as parameter
+- **NOT YET DONE**: re-run path in mine_batch also calls kernel_round0_gen — needs arg3 fix
+- **NOT YET BUILT/TESTED**
+
+#### NEXT SESSION — START HERE
+
+**Step 0: Free GPU memory first** — OOM kill on `./sa-tromp 1`. GPU shared mem exhausted.
+Close browser tabs / other apps, then: `free -m` should show swap < 1GB used.
+May need to restart the GPU driver: `sudo systemctl restart beignet` or reboot.
+
+**Step 1: ✅ DONE (commit 545f107) — Fix re-run path kernel_round0_gen arg setup** (sa-tromp.c ~line 543)
+The re-run path recreates buf_blake_st2 and calls clSetKernelArg. It's missing arg3 (nonce).
+```c
+// Find the re-run section (after "Re-run kernel_round0_gen into scratch_a")
+// Add: clSetKernelArg(kernel_round0_gen, 3, sizeof(cl_uint), &nonce_idx);
+// before the clEnqueueNDRangeKernel loop in the re-run path
+```
+
+**Step 2: Build and test**
+```bash
+make clean && make sa-tromp
+./sa-tromp 5  # expect: varying candidates per nonce, solutions found + VERIFIED OK
+```
+
+**Step 3: Cross-check vs eq1927**
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep Solution
+./sa-tromp 1  # nonce 0 should find same solutions
+```
+If solutions match eq1927's for nonce 0 → pool-compatible ✓
+
+**Step 4: Commit + Phase 2 Stratum**
+Full Stratum plan: `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+### ⚠️ Session 18 State (2026-03-16) — SUPERSEDED BY SESSION 19
 
 #### What was done
 - **OOM fix committed** (`73ea5b2`): early release of buf_tree1/buf_tree0 before scratch alloc

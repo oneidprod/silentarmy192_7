@@ -510,12 +510,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
              * After reading attrs, swap prev=scratch for next stage.
              * Peak GPU: buf_tree0 (source stage0) + scratch_a + scratch_b = 3 trees briefly,
              * then buf_tree0 released after EXTRACT_ATTRS(0), leaving 2 trees. */
+            /* Allocate scratch_a only — scratch_b deferred until buf_tree0 released.
+             * Peak before deferral would be buf_tree0(1.12GB)+scratch_a+scratch_b=3.36GB.
+             * After deferral: buf_tree0(1.12GB)+scratch_a(1.12GB)=2.24GB, then release
+             * buf_tree0, then alloc scratch_b → peak stays at 2.24GB. */
             cl_mem scratch_a = clCreateBuffer(context, CL_MEM_READ_WRITE,
                 tree_size * 28, NULL, &err);  /* max slot size = 28 */
             check_error(err, "scratch_a");
-            cl_mem scratch_b = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                tree_size * 28, NULL, &err);
-            check_error(err, "scratch_b");
+            cl_mem scratch_b = NULL; /* allocated after buf_tree0 released below */
 
             /* Reinit buf_t0_cnt was already released — need stage0 count for stage1.
              * Re-read it from existing buf_tree0 data: use buf_counts[0] which we just
@@ -558,7 +560,11 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
              * Release buf_tree0 immediately after — frees 1.12 GB before stages 1-7. */
             EXTRACT_ATTRS(0, scratch_a, _slot_sz[0]);
             clReleaseMemObject(buf_tree0);
-            /* buf_tree1 already released above (before scratch alloc) */
+            /* buf_tree1 already released above (before scratch alloc).
+             * buf_tree0 now released — safe to alloc scratch_b (peak stays 2.24GB). */
+            scratch_b = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                tree_size * 28, NULL, &err);
+            check_error(err, "scratch_b");
 
             /* Run stages 1-7, ping-ponging scratch_a / scratch_b */
             cl_mem sp = scratch_a, sc = NULL;
@@ -581,6 +587,59 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 }
 
                 EXTRACT_ATTRS(s, sc, _slot_sz[s]);
+                /* Debug: dump first slots of current stage */
+                if (s == 7) {
+                    uint8_t raw[32];
+                    clEnqueueReadBuffer(queue, sc, CL_TRUE, 0, 32, raw, 0, NULL, NULL);
+                    printf("  DBG scratch_b raw[0..31]:");
+                    for (int _d=0; _d<32; _d++) printf(" %02x", raw[_d]);
+                    printf("\n");
+                    printf("  DBG cpu_attrs[7][0..3]: %08x %08x %08x %08x\n",
+                           cpu_attrs[7][0], cpu_attrs[7][1], cpu_attrs[7][2], cpu_attrs[7][3]);
+                }
+                if (s == 1) {
+                    printf("  DBG cpu_attrs[0][0..3]: %08x %08x %08x %08x\n",
+                           cpu_attrs[0][0], cpu_attrs[0][1], cpu_attrs[0][2], cpu_attrs[0][3]);
+                    printf("  DBG cpu_attrs[1][0..3]: %08x %08x %08x %08x\n",
+                           cpu_attrs[1][0], cpu_attrs[1][1], cpu_attrs[1][2], cpu_attrs[1][3]);
+                    /* Verify xi[0] and xi[1] actually collide on 24 bits */
+                    uint32_t xi0 = cpu_attrs[0][0], xi1 = cpu_attrs[0][1];
+                    uint8_t h0[24], h1[24];
+                    eh_genhash(&blake_gen, xi0, nonce_idx, h0);
+                    eh_genhash(&blake_gen, xi1, nonce_idx, h1);
+                    printf("  DBG xi0=%u hash: %02x%02x%02x  xi1=%u hash: %02x%02x%02x  XOR: %02x%02x%02x\n",
+                           xi0, h0[0],h0[1],h0[2], xi1, h1[0],h1[1],h1[2],
+                           h0[0]^h1[0], h0[1]^h1[1], h0[2]^h1[2]);
+                    /* Read the actual stage0 GPU slot 0 raw bytes to compare */
+                    uint8_t s0raw[28];
+                    clEnqueueReadBuffer(queue, sp, CL_TRUE, 0, 28, s0raw, 0, NULL, NULL);
+                    printf("  DBG stage0 slot0 raw:");
+                    for (int _d=0; _d<28; _d++) printf(" %02x", s0raw[_d]);
+                    printf("\n");
+                    /* Print blake state h[0..7] */
+                    printf("  DBG blake_gen.h:");
+                    for (int _d=0; _d<8; _d++) printf(" %016llx", (unsigned long long)blake_gen.h[_d]);
+                    printf("  bytes=%llu\n", (unsigned long long)blake_gen.bytes);
+                    /* Read back buf_blake_st2 to see what GPU actually received */
+                    uint64_t gpu_h[8];
+                    clEnqueueReadBuffer(queue, buf_blake_st2, CL_TRUE, 0, 64, gpu_h, 0, NULL, NULL);
+                    printf("  DBG GPU blake_state:");
+                    for (int _d=0; _d<8; _d++) printf(" %016llx", (unsigned long long)gpu_h[_d]);
+                    printf("\n");
+                    /* Compute xi=20196 hash manually step by step */
+                    {
+                        uint32_t _xi = 20196;
+                        blake2b_state_t _st = blake_gen;
+                        uint64_t _msg[16] = {0};
+                        _msg[0] = (uint64_t)nonce_idx;
+                        _msg[1] = (uint64_t)(_xi/2) << 32;
+                        uint8_t _h[48];
+                        zcash_blake2b_update(&_st, (const uint8_t*)_msg, 16, 1);
+                        zcash_blake2b_final(&_st, _h, 48);
+                        printf("  DBG xi=%u manual hash: %02x%02x%02x  bytes_after_upd=%llu\n",
+                               _xi, _h[0], _h[1], _h[2], (unsigned long long)_st.bytes);
+                    }
+                }
                 sp = sc;
             }
             clReleaseMemObject(buf_t0_cnt2);
@@ -599,6 +658,18 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             /* ── Phase 3c: Extract and verify solutions ── */
             uint32_t tree_sz = (uint32_t)tree_size;
             int n_extracted = 0, n_verified = 0;
+            /* Debug: dump attr chain for first candidate */
+            if (nsol > 0) {
+                uint32_t a7 = cpu_attrs[7][0];
+                uint32_t b6 = a7 >> 12, si6 = (a7>>6)&0x3F, sj6 = a7&0x3F;
+                uint32_t flat6i = b6*NSLOTS + si6, flat6j = b6*NSLOTS + sj6;
+                printf("  DBG cand0: attr7=0x%08x  b6=%u si=%u sj=%u  flat6i=%u flat6j=%u tree_sz=%u\n",
+                       a7, b6, si6, sj6, flat6i, flat6j, tree_sz);
+                if (flat6i < tree_sz && flat6j < tree_sz) {
+                    uint32_t a6i = cpu_attrs[6][flat6i], a6j = cpu_attrs[6][flat6j];
+                    printf("  DBG attr6[i]=0x%08x  attr6[j]=0x%08x\n", a6i, a6j);
+                }
+            }
             for (uint32_t s = 0; s < nsol; s++) {
                 uint32_t indices[PROOFSIZE];
                 if (!extract_solution(cpu_attrs, s, indices, tree_sz)) continue;
