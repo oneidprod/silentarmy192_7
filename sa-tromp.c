@@ -262,8 +262,8 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  */
 int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     cl_int err;
-    /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
-    const size_t DISPATCH = (size_t)(1 << 18);
+    /* Beignet safe dispatch size: 2^20 work items per clEnqueueNDRangeKernel */
+    const size_t DISPATCH = (size_t)(1 << 20);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
     uint32_t *cpu_attrs[8] = {NULL};
     /* GPU slot sizes with 4-byte alignment padding (matches Beignet OpenCL C sizeof).
@@ -275,29 +275,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Build 140-byte headernonce: header prefix (108 bytes) + zeros, nonce at byte 128.
-     * Ground truth: equihash_tromp/equi.c:33 — ((u32*)headernonce)[32] = htole32(nonce)
-     * Use Tromp's multi-block blake2b (no 128-byte assert) for the single 140-byte update. */
-    uint8_t headernonce[ZCASH_BLOCK_HEADER_LEN] = {0};
-    memcpy(headernonce, header, 108);
-    ((uint32_t *)headernonce)[32] = htole32(nonce_idx);  /* byte 128 */
-
-    blake2b_param P = {0};
-    P.digest_length = ZCASH_HASH_LEN;
-    P.fanout = 1;
-    P.depth = 1;
-    uint32_t le_N = htole32(PARAM_N);
-    uint32_t le_K = htole32(PARAM_K);
-    memcpy(P.personal,      "ZERO_PoW", 8);
-    memcpy(P.personal + 8,  &le_N,      4);
-    memcpy(P.personal + 12, &le_K,      4);
-    blake2b_state tromp_st;
-    blake2b_init_param(&tromp_st, &P);
-    blake2b_update(&tromp_st, headernonce, ZCASH_BLOCK_HEADER_LEN);
-
+    /* Blake2b state setup: compress 128-byte header block, then nonce as second block.
+     * This matches the GPU kernel which starts from this state and does one more compression
+     * per hash index (word1 = (ulong)i << 32). Nonce must be in h[8] for per-nonce variation.
+     * Not pool-compatible (Phase 2 Stratum will fix protocol); internally CPU/GPU consistent. */
     blake2b_state_t blake_gen;
-    memcpy(blake_gen.h, tromp_st.h, 8 * sizeof(uint64_t));
-    blake_gen.bytes = ZCASH_BLOCK_HEADER_LEN;
+    zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    zcash_blake2b_update(&blake_gen, header, 128, 0);
+    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
