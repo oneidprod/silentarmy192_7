@@ -78,9 +78,41 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#17 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#18 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 16 State (2026-03-13) — IN PROGRESS
+### ⚠️ Session 17 State (2026-03-16) — IN PROGRESS
+
+#### What was done
+- Diagnosed Session 16 error: nonce at `[27]`=byte 108 was WRONG — eq1927 ground truth is `[32]`=byte 128
+- Fixed sa-tromp.c: replaced `zcash_blake2b_*` with Tromp's multi-block `blake2b_init_param` + `blake2b_update(headernonce, 140)`, nonce at `[32]`=byte 128
+- Copied blake2 headers/impl from `equihash_tromp/blake/` → `blake/` (clean project separation)
+- Updated Makefile to use `blake/blake2b.o` + `-Iblake`
+- Updated test_verifier.c comments (nonce position fix)
+- Build: clean ✅  Commit: `8e5c875`
+- **OOM pre-existing**: Linux OOM killer kills sa-tromp (837MB RSS, system has 2.7GB swap used)
+  - Confirmed same OOM on old commit `d7dbdf8` — unrelated to blake changes
+  - Need to free swap/memory before running
+
+#### NEXT SESSION — START HERE
+
+**Step 1: Free memory, then verify**
+```bash
+# Free up memory (close browser, other apps)
+# Check swap usage: free -m
+./sa-tromp 5   # expect: solutions + VERIFIED OK
+```
+
+**Step 2: Cross-check test_verifier with eq1927**
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep "^Solution" | head -1
+# Build headernonce hex (zeros with nonce=0 at byte 128): 280 hex chars of zeros
+./test_verifier 0000...0000 /tmp/ref_solutions.txt   # expect: VERIFICATION PASSED
+```
+
+**Step 3: If both pass → commit note + proceed to Phase 2**
+Full Stratum plan: `/home/mine/.claude/plans/harmonic-dreaming-piglet.md`
+
+### ⚠️ Session 16 State (2026-03-13) — SUPERSEDED BY SESSION 17
 
 #### What was done
 - test_verifier confirmed working: passes eq1927 reference solutions ✅
