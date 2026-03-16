@@ -495,11 +495,16 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 free(z);
             }
 
+            /* Release buf_tree1 now — it is not used in the re-run.
+             * Must happen before scratch_a/scratch_b allocation to keep
+             * peak GPU at 2 trees (scratch_a + scratch_b = 2.24 GB) not 4. */
+            clReleaseMemObject(buf_tree1);
+
             /* Allocate a single scratch tree buffer for the re-run chain.
              * We process one stage at a time: prev = source, scratch = output.
              * After reading attrs, swap prev=scratch for next stage.
-             * Peak GPU: buf_tree0 (source stage0) + scratch = 2 trees briefly,
-             * then only scratch survives each step. */
+             * Peak GPU: buf_tree0 (source stage0) + scratch_a + scratch_b = 3 trees briefly,
+             * then buf_tree0 released after EXTRACT_ATTRS(0), leaving 2 trees. */
             cl_mem scratch_a = clCreateBuffer(context, CL_MEM_READ_WRITE,
                 tree_size * 28, NULL, &err);  /* max slot size = 28 */
             check_error(err, "scratch_a");
@@ -543,10 +548,11 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clReleaseMemObject(buf_blake_st2);
             }
             /* scratch_a now has fresh stage0 data.
-             * Read stage0 attrs from scratch_a (ensures same run as stages 1-7). */
+             * Read stage0 attrs from scratch_a (ensures same run as stages 1-7).
+             * Release buf_tree0 immediately after — frees 1.12 GB before stages 1-7. */
             EXTRACT_ATTRS(0, scratch_a, _slot_sz[0]);
             clReleaseMemObject(buf_tree0);
-            clReleaseMemObject(buf_tree1);
+            /* buf_tree1 already released above (before scratch alloc) */
 
             /* Run stages 1-7, ping-ponging scratch_a / scratch_b */
             cl_mem sp = scratch_a, sc = NULL;
