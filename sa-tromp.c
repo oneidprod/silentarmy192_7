@@ -44,7 +44,7 @@ typedef uint32_t uint;
 #include "solution_extraction.c"
 
 // Verification function using Tromp's blake2b
-#include "equihash_tromp/blake/blake2.h"
+#include "blake/blake2.h"
 
 /* Define htole32 for little-endian conversion if not available */
 #ifndef htole32
@@ -275,16 +275,29 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Build 140-byte headernonce: header (108 bytes) + nonce at byte 108 + zero pad.
-     * Matches eq1927 protocol: ((u32*)headernonce)[27] = htole32(nonce_idx)
-     * header param must be 108 bytes (version+prevhash+merkle+reserved+time+bits). */
+    /* Build 140-byte headernonce: header prefix (108 bytes) + zeros, nonce at byte 128.
+     * Ground truth: equihash_tromp/equi.c:33 — ((u32*)headernonce)[32] = htole32(nonce)
+     * Use Tromp's multi-block blake2b (no 128-byte assert) for the single 140-byte update. */
     uint8_t headernonce[ZCASH_BLOCK_HEADER_LEN] = {0};
     memcpy(headernonce, header, 108);
-    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);  /* byte 108 */
+    ((uint32_t *)headernonce)[32] = htole32(nonce_idx);  /* byte 128 */
+
+    blake2b_param P = {0};
+    P.digest_length = ZCASH_HASH_LEN;
+    P.fanout = 1;
+    P.depth = 1;
+    uint32_t le_N = htole32(PARAM_N);
+    uint32_t le_K = htole32(PARAM_K);
+    memcpy(P.personal,      "ZERO_PoW", 8);
+    memcpy(P.personal + 8,  &le_N,      4);
+    memcpy(P.personal + 12, &le_K,      4);
+    blake2b_state tromp_st;
+    blake2b_init_param(&tromp_st, &P);
+    blake2b_update(&tromp_st, headernonce, ZCASH_BLOCK_HEADER_LEN);
 
     blake2b_state_t blake_gen;
-    zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&blake_gen, headernonce, ZCASH_BLOCK_HEADER_LEN, 0);
+    memcpy(blake_gen.h, tromp_st.h, 8 * sizeof(uint64_t));
+    blake_gen.bytes = ZCASH_BLOCK_HEADER_LEN;
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);

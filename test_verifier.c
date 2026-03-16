@@ -71,7 +71,7 @@ static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_
     return 1;
 }
 
-/* header is the full 140-byte headernonce (nonce already embedded at [27]*4=byte 108) */
+/* header is the full 140-byte headernonce (nonce already embedded at [32]*4=byte 128) */
 static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
 {
     blake2b_state ctx;
@@ -102,7 +102,7 @@ static uint32_t verify_equihash_full(uint32_t *indices, uint8_t *header)
 int main(int argc, char **argv) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <headernonce_hex> <solution_file>\n", argv[0]);
-        fprintf(stderr, "  headernonce_hex: up to %d hex chars (140 bytes), nonce at [27]*4=byte 108\n",
+        fprintf(stderr, "  headernonce_hex: up to %d hex chars (140 bytes), nonce at [32]*4=byte 128\n",
                 2 * ZCASH_BLOCK_HEADER_LEN);
         return 1;
     }

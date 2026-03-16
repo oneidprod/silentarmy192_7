@@ -53,11 +53,11 @@ cpu_tromp_baseline.o : cpu_tromp_baseline.c blake.h param.h sha256.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c cpu_tromp_baseline.c
 
 # Test verifier — uses Tromp's blake2b to verify eq1927 reference solutions
-test_verifier : test_verifier.o equihash_tromp/blake/blake2b.o
-	${CC} -o test_verifier test_verifier.o equihash_tromp/blake/blake2b.o ${LDFLAGS}
+test_verifier : test_verifier.o blake/blake2b.o
+	${CC} -o test_verifier test_verifier.o blake/blake2b.o ${LDFLAGS}
 
-test_verifier.o : test_verifier.c param.h equihash_tromp/blake/blake2.h
-	${CC} ${CPPFLAGS} ${CFLAGS} -Iequihash_tromp/blake -c test_verifier.c
+test_verifier.o : test_verifier.c param.h blake/blake2.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -Iblake -c test_verifier.c
 
 # Blake2b comparison tool (existing)
 compare_blake2b : compare_blake2b.o blake.o
@@ -67,11 +67,11 @@ compare_blake2b.o : compare_blake2b.c blake.h param.h _kernel.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c compare_blake2b.c
 
 # sa-tromp: Standalone Equihash 192,7 GPU miner with verification (Phase 6)
-sa-tromp : sa-tromp.o blake.o equihash_tromp/blake/blake2b.o
-	${CC} -o sa-tromp sa-tromp.o blake.o equihash_tromp/blake/blake2b.o ${LDFLAGS} ${LDLIBS}
+sa-tromp : sa-tromp.o blake.o blake/blake2b.o
+	${CC} -o sa-tromp sa-tromp.o blake.o blake/blake2b.o ${LDFLAGS} ${LDLIBS}
 
-sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c
-	${CC} ${CPPFLAGS} ${CFLAGS} -Iequihash_tromp/blake -c sa-tromp.c
+sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c blake/blake2.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -Iblake -c sa-tromp.c
 
-equihash_tromp/blake/blake2b.o : equihash_tromp/blake/blake2b.cpp equihash_tromp/blake/blake2.h
-	${CC} ${CPPFLAGS} ${CFLAGS} -c equihash_tromp/blake/blake2b.cpp -o equihash_tromp/blake/blake2b.o
+blake/blake2b.o : blake/blake2b.cpp blake/blake2.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c blake/blake2b.cpp -o blake/blake2b.o
