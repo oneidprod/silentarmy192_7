@@ -51,31 +51,33 @@ typedef uint32_t uint;
 #define htole32(x) ((uint32_t)(x))
 #endif
 
-static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint8_t *hash)
+static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce, uint8_t *hash)
 {
     /* Match GPU kernel_round0_gen hash generation exactly.
-     * Verified by /tmp/test_with_nonce: st.bytes=140, msg=4 bytes, matches GPU. */
+     * Block 2 = nonce(m[0] low32) || index<<32(m[1] high32) || zeros.
+     * ctx = h after block1 (bytes 0-127, no nonce). bytes = 128. */
     blake2b_state_t st = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
     const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
     uint8_t full_hash[ZCASH_HASH_LEN];
     uint64_t message[16] = {0};
     uint32_t g = idx / hashes_per_blake;
-    message[1] = ((uint64_t)g) << 32;
-    st.bytes = ZCASH_BLOCK_HEADER_LEN;
-    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
+    message[0] = (uint64_t)nonce;          /* m[0] low32 = nonce */
+    message[1] = (uint64_t)g << 32;        /* m[1] high32 = blake-call index */
+    st.bytes = 128;                        /* initial state was built after block1 (128 bytes) */
+    zcash_blake2b_update(&st, (const uint8_t *)message, 2 * sizeof(uint64_t), 1);
     zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
 static int verbose = 0;
 
-static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r)
+static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
     if (r == 0) {
-        eh_genhash(ctx, *indices, hash);
+        eh_genhash(ctx, *indices, nonce, hash);
         if (verbose) {
             printf("  [r=0] idx=%u hash: %02x%02x%02x%02x%02x%02x\n", 
                    *indices, hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]);
@@ -93,11 +95,11 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
     }
 
     uint8_t hash0[hash_bytes], hash1[hash_bytes];
-    if (!eh_verifyrec(ctx, indices, hash0, r - 1)) {
+    if (!eh_verifyrec(ctx, indices, hash0, r - 1, nonce)) {
         if (verbose) printf("  [r=%d] FAIL: left subtree failed\n", r);
         return 0;
     }
-    if (!eh_verifyrec(ctx, indices1, hash1, r - 1)) {
+    if (!eh_verifyrec(ctx, indices1, hash1, r - 1, nonce)) {
         if (verbose) printf("  [r=%d] FAIL: right subtree failed\n", r);
         return 0;
     }
@@ -130,11 +132,11 @@ static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint
 }
 
 static uint32_t verify_equihash_full(uint32_t *indices, const blake2b_state_t *blake_ctx,
-                                      int verbose_mode)
+                                      uint32_t nonce, int verbose_mode)
 {
     verbose = verbose_mode;
     uint8_t hash[PARAM_N / 8];
-    int result = eh_verifyrec(blake_ctx, indices, hash, PARAM_K);
+    int result = eh_verifyrec(blake_ctx, indices, hash, PARAM_K, nonce);
     
     if (result && verbose) {
         printf("  ✓ All 7 stages have 24-bit collisions\n");
@@ -275,14 +277,31 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Blake2b state setup: compress 128-byte header block, then nonce as second block.
-     * This matches the GPU kernel which starts from this state and does one more compression
-     * per hash index (word1 = (ulong)i << 32). Nonce must be in h[8] for per-nonce variation.
-     * Not pool-compatible (Phase 2 Stratum will fix protocol); internally CPU/GPU consistent. */
+    /* Blake2b state: compress block 1 (bytes 0-127 of headernonce, no nonce).
+     * GPU block 2 = nonce(m[0] low32) || index<<32(m[1] high32) || zeros.
+     * v[12] ^= 144 = 140+4; nonce passed as kernel arg 3. */
+    uint8_t hdr128[128] = {0};
+    memcpy(hdr128, header, 108);  /* header is ≤108 bytes; rest zero */
+
+    blake2b_param P = {0};
+    P.digest_length = ZCASH_HASH_LEN;
+    P.fanout = 1;
+    P.depth = 1;
+    char personals[16];
+    memcpy(personals, "ZERO_PoW", 8);
+    uint32_t le_N = htole32(PARAM_N);
+    uint32_t le_K = htole32(PARAM_K);
+    memcpy(personals + 8, &le_N, 4);
+    memcpy(personals + 12, &le_K, 4);
+    memcpy(P.personal, personals, 16);
+
+    blake2b_state tromp_st;
+    blake2b_init_param(&tromp_st, &P);
+    blake2b_update(&tromp_st, hdr128, 128);  /* compress block 1; nonce NOT here */
+
     blake2b_state_t blake_gen;
-    zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
-    zcash_blake2b_update(&blake_gen, header, 128, 0);
-    zcash_blake2b_update(&blake_gen, (uint8_t*)&nonce_idx, sizeof(nonce_idx), 0);
+    memcpy(blake_gen.h, tromp_st.h, 8 * sizeof(uint64_t));
+    blake_gen.bytes = 128;
 
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
@@ -306,6 +325,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st);
     clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &buf_tree0);
     clSetKernelArg(kernel_round0_gen, 2, sizeof(cl_mem), &buf_t0_cnt);
+    clSetKernelArg(kernel_round0_gen, 3, sizeof(cl_uint), &nonce_idx);
 
     {
         /* 2^24 total work items = 2^25 hashes; split into 64 batches of 2^18 */
@@ -583,7 +603,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 if (!extract_solution(cpu_attrs, s, indices, tree_sz)) continue;
                 n_extracted++;
                 canonical_sort(indices, PARAM_K);
-                if (verify_equihash_full(indices, &blake_gen, n_extracted == 1 ? 1 : 0)) {
+                if (verify_equihash_full(indices, &blake_gen, nonce_idx, n_extracted == 1 ? 1 : 0)) {
                     n_verified++;
                     printf("  SOLUTION nonce=%u:", nonce_idx);
                     for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);

@@ -479,8 +479,8 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
     uint                dropped = 0;
     while (input < input_end)
       {
-	// shift "i" to occupy the high 32 bits of the second ulong word in the
-	// message block
+	/* eq1927/Tromp block 2 layout: m[0]=nonce (low 32), m[1]=index<<32 (high 32) */
+	ulong word0 = blake_state[8]; /* nonce stored in extra slot [8] by host */
 	ulong word1 = (ulong)input << 32;
 	// init vector v
 	v[0] = blake_state[0];
@@ -499,13 +499,13 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	v[13] = blake_iv[5];
 	v[14] = blake_iv[6];
 	v[15] = blake_iv[7];
-	// mix in length of data
-	v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4 /* length of "i" */;
+	// 140-byte headernonce + 4-byte index = 144
+	v[12] ^= 144;
 	// last block
 	v[14] ^= (ulong)-1;
 
-	// round 1
-	mix(v[0], v[4], v[8],  v[12], 0, word1);
+	// round 1 — sigma[0]: m[0] at col0 x, m[1] at col0 y
+	mix(v[0], v[4], v[8],  v[12], word0, word1);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -513,35 +513,35 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 2
+	// round 2 — sigma[1]: m[1] at col4 x, m[0] at col5 x
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
 	mix(v[0], v[5], v[10], v[15], word1, 0);
-	mix(v[1], v[6], v[11], v[12], 0, 0);
+	mix(v[1], v[6], v[11], v[12], word0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 3
+	// round 3 — sigma[2]: m[0] at col1 y, m[1] at col6 y
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
-	mix(v[1], v[5], v[9],  v[13], 0, 0);
+	mix(v[1], v[5], v[9],  v[13], 0, word0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
 	mix(v[0], v[5], v[10], v[15], 0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, word1);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 4
+	// round 4 — sigma[3]: m[1] at col1 y, m[0] at col6 y
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, word1);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
 	mix(v[0], v[5], v[10], v[15], 0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
-	mix(v[2], v[7], v[8],  v[13], 0, 0);
+	mix(v[2], v[7], v[8],  v[13], 0, word0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 5
-	mix(v[0], v[4], v[8],  v[12], 0, 0);
+	// round 5 — sigma[4]: m[0] at col0 y, m[1] at col4 y
+	mix(v[0], v[4], v[8],  v[12], 0, word0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -549,43 +549,43 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 6
+	// round 6 — sigma[5]: m[0] at col2 x, m[1] at col7 y
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
-	mix(v[2], v[6], v[10], v[14], 0, 0);
+	mix(v[2], v[6], v[10], v[14], word0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
 	mix(v[0], v[5], v[10], v[15], 0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
-	mix(v[3], v[4], v[9],  v[14], word1, 0);
-	// round 7
+	mix(v[3], v[4], v[9],  v[14], 0, word1);
+	// round 7 — sigma[6]: m[1] at col1 x, m[0] at col4 x
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], word1, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
-	mix(v[0], v[5], v[10], v[15], 0, 0);
+	mix(v[0], v[5], v[10], v[15], word0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 8
+	// round 8 — sigma[7]: m[1] at col2 y, m[0] at col4 y
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, word1);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
-	mix(v[0], v[5], v[10], v[15], 0, 0);
+	mix(v[0], v[5], v[10], v[15], 0, word0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 9
+	// round 9 — sigma[8]: m[0] at col3 x, m[1] at col6 x
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
-	mix(v[3], v[7], v[11], v[15], 0, 0);
+	mix(v[3], v[7], v[11], v[15], word0, 0);
 	mix(v[0], v[5], v[10], v[15], 0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], word1, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 10
+	// round 10 — sigma[9]: m[1] at col3 x, m[0] at col7 y
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
@@ -593,9 +593,9 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	mix(v[0], v[5], v[10], v[15], 0, 0);
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
-	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 11
-	mix(v[0], v[4], v[8],  v[12], 0, word1);
+	mix(v[3], v[4], v[9],  v[14], 0, word0);
+	// round 11 — sigma[10]=sigma[0]: same as round 1
+	mix(v[0], v[4], v[8],  v[12], word0, word1);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -603,13 +603,13 @@ void kernel_round0(__global ulong *blake_state, __global char *ht,
 	mix(v[1], v[6], v[11], v[12], 0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
-	// round 12
+	// round 12 — sigma[11]=sigma[1]: same as round 2
 	mix(v[0], v[4], v[8],  v[12], 0, 0);
 	mix(v[1], v[5], v[9],  v[13], 0, 0);
 	mix(v[2], v[6], v[10], v[14], 0, 0);
 	mix(v[3], v[7], v[11], v[15], 0, 0);
 	mix(v[0], v[5], v[10], v[15], word1, 0);
-	mix(v[1], v[6], v[11], v[12], 0, 0);
+	mix(v[1], v[6], v[11], v[12], word0, 0);
 	mix(v[2], v[7], v[8],  v[13], 0, 0);
 	mix(v[3], v[4], v[9],  v[14], 0, 0);
 
@@ -1479,12 +1479,18 @@ void kernel_stage7_collisions(
  */
 __kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void kernel_round0_gen(
-    __global ulong *blake_state,       /* 8 x ulong pre-initialized state */
+    __global ulong *blake_state,       /* 8 x ulong pre-initialized state (after hdr block1) */
     __global stage0_slot_t *tree0,     /* NBUCKETS_STAGE1 * NSLOTS_STAGE1 slots */
-    __global uint *tree0_counts)       /* atomic slot counters [NBUCKETS_STAGE1] */
+    __global uint *tree0_counts,       /* atomic slot counters [NBUCKETS_STAGE1] */
+    uint nonce)                        /* mining nonce (goes into m[0] low 32 bits) */
 {
     uint i = get_global_id(0);
-    ulong word1 = (ulong)i << 32;
+    /* eq1927/Tromp standard block 2 layout:
+     *   bytes 128-131: nonce (m[0] low 32 bits)
+     *   bytes 132-135: blake-call index i (m[1] high 32 bits = word1)
+     * blake_state = h after block1 (bytes 0-127 of headernonce, no nonce) */
+    ulong word0 = (ulong)nonce;        /* m[0] = nonce in low 32 bits */
+    ulong word1 = (ulong)i << 32;      /* m[1] = index in high 32 bits */
 
     ulong v[16];
     v[0]  = blake_state[0]; v[1]  = blake_state[1];
@@ -1495,11 +1501,13 @@ void kernel_round0_gen(
     v[10] = blake_iv[2];    v[11] = blake_iv[3];
     v[12] = blake_iv[4];    v[13] = blake_iv[5];
     v[14] = blake_iv[6];    v[15] = blake_iv[7];
-    v[12] ^= ZCASH_BLOCK_HEADER_LEN + 4;
+    // 140-byte headernonce + 4-byte index = 144
+    v[12] ^= 144;
     v[14] ^= (ulong)-1;
 
     /* 12 BLAKE2b rounds — identical schedule to kernel_round0 */
-    mix(v[0], v[4], v[8],  v[12], 0, word1);
+    // round 1 — sigma[0]: m[0] at col0 x, m[1] at col0 y
+    mix(v[0], v[4], v[8],  v[12], word0, word1);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -1508,17 +1516,19 @@ void kernel_round0_gen(
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 2 — sigma[1]: m[1] at col4 x, m[0] at col5 x
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
     mix(v[0], v[5], v[10], v[15], word1, 0);
-    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[1], v[6], v[11], v[12], word0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 3 — sigma[2]: m[0] at col1 y, m[1] at col6 y
     mix(v[0], v[4], v[8],  v[12], 0, 0);
-    mix(v[1], v[5], v[9],  v[13], 0, 0);
+    mix(v[1], v[5], v[9],  v[13], 0, word0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
     mix(v[0], v[5], v[10], v[15], 0, 0);
@@ -1526,16 +1536,18 @@ void kernel_round0_gen(
     mix(v[2], v[7], v[8],  v[13], 0, word1);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 4 — sigma[3]: m[1] at col1 y, m[0] at col6 y
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, word1);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
     mix(v[0], v[5], v[10], v[15], 0, 0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
-    mix(v[2], v[7], v[8],  v[13], 0, 0);
+    mix(v[2], v[7], v[8],  v[13], 0, word0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
-    mix(v[0], v[4], v[8],  v[12], 0, 0);
+    // round 5 — sigma[4]: m[0] at col0 y, m[1] at col4 y
+    mix(v[0], v[4], v[8],  v[12], 0, word0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -1544,42 +1556,47 @@ void kernel_round0_gen(
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 6 — sigma[5]: m[0] at col2 x, m[1] at col7 y
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
-    mix(v[2], v[6], v[10], v[14], 0, 0);
+    mix(v[2], v[6], v[10], v[14], word0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
     mix(v[0], v[5], v[10], v[15], 0, 0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
-    mix(v[3], v[4], v[9],  v[14], word1, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, word1);
 
+    // round 7 — sigma[6]: m[1] at col1 x, m[0] at col4 x
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], word1, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
-    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], word0, 0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 8 — sigma[7]: m[1] at col2 y, m[0] at col4 y
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, word1);
     mix(v[3], v[7], v[11], v[15], 0, 0);
-    mix(v[0], v[5], v[10], v[15], 0, 0);
+    mix(v[0], v[5], v[10], v[15], 0, word0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 9 — sigma[8]: m[0] at col3 x, m[1] at col6 x
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
-    mix(v[3], v[7], v[11], v[15], 0, 0);
+    mix(v[3], v[7], v[11], v[15], word0, 0);
     mix(v[0], v[5], v[10], v[15], 0, 0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
     mix(v[2], v[7], v[8],  v[13], word1, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 10 — sigma[9]: m[1] at col3 x, m[0] at col7 y
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
@@ -1587,9 +1604,10 @@ void kernel_round0_gen(
     mix(v[0], v[5], v[10], v[15], 0, 0);
     mix(v[1], v[6], v[11], v[12], 0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
-    mix(v[3], v[4], v[9],  v[14], 0, 0);
+    mix(v[3], v[4], v[9],  v[14], 0, word0);
 
-    mix(v[0], v[4], v[8],  v[12], 0, word1);
+    // round 11 — sigma[10]=sigma[0]: same as round 1
+    mix(v[0], v[4], v[8],  v[12], word0, word1);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
@@ -1598,12 +1616,13 @@ void kernel_round0_gen(
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
+    // round 12 — sigma[11]=sigma[1]: same as round 2
     mix(v[0], v[4], v[8],  v[12], 0, 0);
     mix(v[1], v[5], v[9],  v[13], 0, 0);
     mix(v[2], v[6], v[10], v[14], 0, 0);
     mix(v[3], v[7], v[11], v[15], 0, 0);
     mix(v[0], v[5], v[10], v[15], word1, 0);
-    mix(v[1], v[6], v[11], v[12], 0, 0);
+    mix(v[1], v[6], v[11], v[12], word0, 0);
     mix(v[2], v[7], v[8],  v[13], 0, 0);
     mix(v[3], v[4], v[9],  v[14], 0, 0);
 
