@@ -78,9 +78,58 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#18 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#19 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 17 State (2026-03-16) — IN PROGRESS
+### ⚠️ Session 18 State (2026-03-16) — IN PROGRESS
+
+#### What was done
+- **OOM fix committed** (`73ea5b2`): early release of buf_tree1/buf_tree0 before scratch alloc
+  - Peak GPU drops 4.5 GB → 2.24 GB; sa-tromp 1 runs to completion without OOM
+- **Ran sa-tromp 1** (nonce 0): 842 candidates → 0 extracted (distinct) → 0 verified
+- **Discovered performance issue**: 28s wall clock per nonce (2s compute, 26s driver overhead)
+  - 180+ clFinish calls per nonce; DISPATCH=2^18 too small
+- **Analyzed cascade**: counts look correct (31M→29M→26M→20M→12M→842) for random hashes
+- **Diagnosed 0 extracted root cause**: nonce 0 probably has no valid solution; blake fix may
+  have changed initial state such that this specific nonce produces no solution
+
+#### KEY FINDING: blake convention mismatch
+The GPU `kernel_round0_gen` uses `word1 = (ulong)i << 32` placing the block index in the
+HIGH 32 bits of a ulong, feeding sigma position m[1]. The eq1927 reference places the 4-byte
+block index `leb = htole32(i)` in bytes 0-3 = m[0] low 32 bits.
+
+**Both GPU kernel and CPU `eh_genhash` use the same (non-standard) placement → they agree.**
+The eq1927 tool finds 2 solutions for nonce 0 (known test). Our GPU produces different hashes
+and won't find those specific solutions.
+
+**However:** GPU and CPU verifier are internally consistent. With enough nonces, our pipeline
+SHOULD find solutions that pass local verification. The mismatch vs eq1927 only matters for
+pool submission (Phase 2 Stratum).
+
+#### NEXT SESSION — START HERE
+
+**Step 1: Increase DISPATCH to fix 28s/nonce performance**
+In `sa-tromp.c` line 266: change `DISPATCH = (1 << 18)` → `DISPATCH = (1 << 20)`.
+This reduces clFinish calls from ~180 to ~45, bringing wall clock to ~6-8s/nonce.
+Test with `./sa-tromp 1` — if GPU hangs, revert.
+
+**Step 2: Run enough nonces to find a verified solution**
+```bash
+./sa-tromp 20   # at ~6-8s/nonce = ~2min; expect ~2-4 solutions if rate unchanged
+```
+If VERIFIED OK appears → pipeline is correct, blake fix is working internally.
+If 0 solutions after 20 nonces → deeper investigation needed.
+
+**Step 3 (if solutions found): Compare vs eq1927 for compatibility**
+The GPU hashes differ from eq1927. To make pool-compatible, the kernel needs sigma fix:
+- Change `word1 = (ulong)i` (not `<< 32`)
+- Change first mix call: `mix(v[0],v[4],v[8],v[12], word1, 0)` (not `0, word1`)
+- All other sigma positions for m[1] need shifting to m[0] positions
+- See `compare_blake2b.c` and `compare_tromp_hash.c` for test infrastructure
+
+**Performance reference**: `./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0` finds 2 solutions
+(known test data). Our GPU can't find these until kernel sigma is fixed.
+
+### ⚠️ Session 17 State (2026-03-16) — SUPERSEDED BY SESSION 18
 
 #### What was done
 - Diagnosed Session 16 error: nonce at `[27]`=byte 108 was WRONG — eq1927 ground truth is `[32]`=byte 128
