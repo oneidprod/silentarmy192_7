@@ -545,6 +545,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st2);
                 clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &scratch_a);
                 clSetKernelArg(kernel_round0_gen, 2, sizeof(cl_mem), &buf_t0_cnt2);
+                clSetKernelArg(kernel_round0_gen, 3, sizeof(cl_uint), &nonce_idx);
                 for (size_t base = 0; base < (size_t)(1 << 24); base += DISPATCH) {
                     clEnqueueNDRangeKernel(queue, kernel_round0_gen, 1,
                         &base, &DISPATCH, &(size_t){64}, 0, NULL, NULL);
