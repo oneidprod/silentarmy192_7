@@ -53,19 +53,20 @@ typedef uint32_t uint;
 
 static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce, uint8_t *hash)
 {
-    /* Match GPU kernel_round0_gen block 2 layout:
-     *   m[0] low32 = nonce, m[1] high32 = i (=idx/hashes_per_blake)
-     * ctx = h after block1 (bytes 0-127, no nonce); bytes=128. */
+    /* Tromp/eq1927 standard block 2 layout:
+     *   m[0] low32 = g (blake-call index), m[0..15] = 0 otherwise
+     * Matches GPU kernel_round0_gen: word0=(ulong)g, word1=0.
+     * ctx = h after block1 (bytes 0-127 of headernonce, includes nonce); bytes=128. */
+    (void)nonce;  /* nonce is in headernonce block1, not in block2 message */
     blake2b_state_t st = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
     const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
     uint8_t full_hash[ZCASH_HASH_LEN];
     uint64_t message[16] = {0};
     uint32_t g = idx / hashes_per_blake;
-    message[0] = (uint64_t)nonce;          /* m[0] low32 = nonce */
-    message[1] = (uint64_t)g << 32;        /* m[1] high32 = blake-call index */
+    message[0] = (uint64_t)g;              /* m[0] low32 = g (Tromp/eq1927 standard) */
     st.bytes = 128;                        /* initial state was built after block1 (128 bytes) */
-    zcash_blake2b_update(&st, (const uint8_t *)message, 2 * sizeof(uint64_t), 1);
+    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
     zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
@@ -277,34 +278,17 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Blake2b state: compress 140-byte headernonce (bytes 0-127 = header,
-     * bytes 128-131 = nonce LE) per Tromp/eq1927 standard.
-     * GPU block 2 = (idx/2)(m[0] low32) || zeros; v[12] ^= 144 = 140+4. */
-    uint8_t headernonce[140] = {0};
+    /* Tromp/eq1927 standard: nonce at headernonce bytes 108-111 (inside block1).
+     * Block1 = headernonce[0..127] (includes nonce). Block2 per hash = {g, 0...}.
+     * GPU block 2: word0=(ulong)g, word1=0; v[12] ^= 144. */
+    uint8_t headernonce[128] = {0};
     memcpy(headernonce, header, 108);  /* header is ≤108 bytes; rest zero */
-    ((uint32_t *)headernonce)[32] = htole32(nonce_idx);  /* nonce at bytes 128-131 */
-
-    blake2b_param P = {0};
-    P.digest_length = ZCASH_HASH_LEN;
-    P.fanout = 1;
-    P.depth = 1;
-    char personals[16];
-    memcpy(personals, "ZERO_PoW", 8);
-    uint32_t le_N = htole32(PARAM_N);
-    uint32_t le_K = htole32(PARAM_K);
-    memcpy(personals + 8, &le_N, 4);
-    memcpy(personals + 12, &le_K, 4);
-    memcpy(P.personal, personals, 16);
-
-    blake2b_state tromp_st;
-    blake2b_init_param(&tromp_st, &P);
-    blake2b_update(&tromp_st, headernonce, 128);  /* compress block 1 (bytes 0-127) */
-    /* tromp_st.h = h after block1; nonce goes into block 2 via kernel arg / eh_genhash */
+    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
 
     blake2b_state_t blake_gen;
-    memcpy(blake_gen.h, tromp_st.h, 8 * sizeof(uint64_t));
-    blake_gen.bytes = 128;
-
+    zcash_blake2b_init(&blake_gen, ZCASH_HASH_LEN, PARAM_N, PARAM_K);
+    zcash_blake2b_update(&blake_gen, headernonce, 128, 0);  /* compress block1 (not final) */
+    /* blake_gen.h = h after block1 (nonce embedded); bytes = 128 */
     cl_mem buf_blake_st = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
     check_error(err, "buf_blake_st");

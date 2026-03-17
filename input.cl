@@ -1482,17 +1482,15 @@ void kernel_round0_gen(
     __global ulong *blake_state,       /* 8 x ulong pre-initialized state (after hdr block1) */
     __global stage0_slot_t *tree0,     /* NBUCKETS_STAGE1 * NSLOTS_STAGE1 slots */
     __global uint *tree0_counts,       /* atomic slot counters [NBUCKETS_STAGE1] */
-    uint nonce)                        /* unused: nonce is already in blake_state */
+    uint nonce)                        /* unused: nonce is embedded in block1 headernonce */
 {
     uint i = get_global_id(0);
-    /* Block 2 layout (matches Tromp genhash streaming buffer):
-     *   bytes 0-3:  nonce (little-endian uint32) → m[0] low 32 bits
-     *   bytes 4-11: zeros                        → m[0] high 32 bits = 0
-     *   bytes 8-11: zeros                        → m[1] low 32 bits = 0
-     *   bytes 12-15: htole32(i/2)                → m[1] high 32 bits
-     * blake_state = h after block1 (bytes 0-127 of headernonce, no nonce) */
-    ulong word0 = (ulong)nonce;        /* m[0] = nonce in low 32 bits */
-    ulong word1 = (ulong)i << 32;      /* m[1] = index in high 32 bits */
+    /* Tromp/eq1927 standard block 2 layout:
+     *   bytes 0-3:  htole32(i/2) = g → m[0] low 32 bits
+     *   bytes 4-127: zeros
+     * blake_state = h after block1 (bytes 0-127 of headernonce, nonce at bytes 108-111) */
+    ulong word0 = (ulong)i;            /* m[0] low32 = g (blake-call index, Tromp/eq1927 standard) */
+    ulong word1 = (ulong)0;            /* m[1] = 0 */
 
     ulong v[16];
     v[0]  = blake_state[0]; v[1]  = blake_state[1];
@@ -1503,7 +1501,7 @@ void kernel_round0_gen(
     v[10] = blake_iv[2];    v[11] = blake_iv[3];
     v[12] = blake_iv[4];    v[13] = blake_iv[5];
     v[14] = blake_iv[6];    v[15] = blake_iv[7];
-    /* 140-byte headernonce + 4-byte index = 144 total bytes hashed */
+    /* 128-byte headernonce block1 + 16-byte block2 (4 bytes g + 12 zero pad) = 144 total */
     v[12] ^= 144;
     v[14] ^= (ulong)-1;
 
