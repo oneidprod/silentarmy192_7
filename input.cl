@@ -1482,15 +1482,16 @@ void kernel_round0_gen(
     __global ulong *blake_state,       /* 8 x ulong pre-initialized state (after hdr block1) */
     __global stage0_slot_t *tree0,     /* NBUCKETS_STAGE1 * NSLOTS_STAGE1 slots */
     __global uint *tree0_counts,       /* atomic slot counters [NBUCKETS_STAGE1] */
-    uint nonce)                        /* unused: nonce is embedded in block1 headernonce */
+    uint nonce)                        /* mining nonce (m[0] low 32 bits of block2) */
 {
     uint i = get_global_id(0);
-    /* Tromp/eq1927 standard block 2 layout:
-     *   bytes 0-3:  htole32(i/2) = g → m[0] low 32 bits
-     *   bytes 4-127: zeros
-     * blake_state = h after block1 (bytes 0-127 of headernonce, nonce at bytes 108-111) */
-    ulong word0 = (ulong)i;            /* m[0] low32 = g (blake-call index, Tromp/eq1927 standard) */
-    ulong word1 = (ulong)0;            /* m[1] = 0 */
+    /* Tromp/eq1927 standard block 2 layout (matches 140-byte headernonce convention):
+     *   bytes 0-3:   nonce (from headernonce bytes 128-131) → m[0] low 32 bits
+     *   bytes 4-11:  zeros
+     *   bytes 12-15: htole32(i/2) = g → m[1] high 32 bits
+     * block1 = 128 zero bytes (no nonce); block2 = 16 bytes; t=144 total. */
+    ulong word0 = (ulong)nonce;        /* m[0] low32 = nonce */
+    ulong word1 = (ulong)i << 32;      /* m[1] high32 = blake-call index g */
 
     ulong v[16];
     v[0]  = blake_state[0]; v[1]  = blake_state[1];
