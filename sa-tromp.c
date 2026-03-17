@@ -31,7 +31,7 @@ typedef uint32_t uint;
 #define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 1M buckets
-#define NSLOTS 40
+#define NSLOTS 64
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
 
@@ -66,7 +66,7 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce,
     uint32_t g = idx / hashes_per_blake;
     message[0] = (uint64_t)g;              /* m[0] low32 = g (Tromp/eq1927 standard) */
     st.bytes = 128;                        /* initial state was built after block1 (128 bytes) */
-    zcash_blake2b_update(&st, (const uint8_t *)message, sizeof(uint32_t), 1);
+    zcash_blake2b_update(&st, (const uint8_t *)message, 2 * sizeof(uint64_t), 1);
     zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
