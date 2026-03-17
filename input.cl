@@ -1147,9 +1147,9 @@ typedef struct {
 } stage0_slot_t;
 
 /* Collision detection constants */
-#define RESTBITS        4
+#define RESTBITS        5
 #define BUCKBITS        (24 - RESTBITS)
-#define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^20 = 1M */
+#define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^19 = 512K */
 #define NSLOTS_STAGE1   64
 
 /* Hash widths at each stage (bytes remaining after XOR cancellation) */

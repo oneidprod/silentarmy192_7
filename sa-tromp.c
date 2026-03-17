@@ -28,7 +28,7 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 4
+#define RESTBITS 5
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 512K buckets
 #define NSLOTS 64
@@ -149,6 +149,7 @@ static uint32_t verify_equihash_full(uint32_t *indices, const blake2b_state_t *b
 }
 
 // OpenCL context
+static int g_platform_idx = 0;
 cl_platform_id platform;
 cl_device_id device;
 cl_context context;
@@ -172,9 +173,26 @@ void init_opencl(void) {
     
     cl_int err;
     
-    err = clGetPlatformIDs(1, &platform, NULL);
+    cl_uint num_platforms = 0;
+    clGetPlatformIDs(0, NULL, &num_platforms);
+    if (num_platforms == 0) { fprintf(stderr, "No OpenCL platforms found\n"); exit(1); }
+    cl_platform_id platforms[num_platforms];
+    err = clGetPlatformIDs(num_platforms, platforms, NULL);
     check_error(err, "clGetPlatformIDs");
-    
+    if (g_platform_idx < 0 || (cl_uint)g_platform_idx >= num_platforms) {
+        fprintf(stderr, "Platform index %d out of range (0..%u)\n", g_platform_idx, num_platforms-1);
+        for (cl_uint p = 0; p < num_platforms; p++) {
+            char name[128] = {0};
+            clGetPlatformInfo(platforms[p], CL_PLATFORM_NAME, sizeof(name), name, NULL);
+            fprintf(stderr, "  [%u] %s\n", p, name);
+        }
+        exit(1);
+    }
+    platform = platforms[g_platform_idx];
+    { char name[128] = {0};
+      clGetPlatformInfo(platform, CL_PLATFORM_NAME, sizeof(name), name, NULL);
+      printf("OpenCL platform [%d]: %s\n", g_platform_idx, name); }
+
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
     check_error(err, "clGetDeviceIDs");
     
@@ -236,11 +254,6 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
     for (uint32_t idx = 0; idx < num_hashes; idx++) {
         blake = blake_base;
         uint32_t g = nonce_offset + (idx / 2);
-        
-        // Debug: print first and last few nonces
-        if (idx < 4 || idx >= num_hashes - 2) {
-            printf("  [DEBUG] idx=%u -> nonce g=%u\n", idx, g);
-        }
         
         zcash_blake2b_update(&blake, (uint8_t*)&g, sizeof(g), 0);
         
@@ -470,15 +483,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clFinish(queue);
             }
 
-            /* DEBUG: direct read of first 3 slots from curr before extraction */
-            if (s >= 5) {
-                uint32_t raw[12] = {0};
-                size_t nb = (size_t)_slot_sz[s] * 3;
-                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, nb, raw, 0, NULL, NULL);
-                fprintf(stderr, "  DEBUG s=%d curr first-3-slots:", s);
-                for (int _x = 0; _x < (int)(nb/4); _x++) fprintf(stderr, " %08x", raw[_x]);
-                fprintf(stderr, "\n");
-            }
             /* Extract attrs[s] from curr (just-written output buffer, batched) */
             { uint32_t stride = (uint32_t)_slot_sz[s];
               clSetKernelArg(kernel_extract_attrs_k, 0, sizeof(cl_mem), &curr);
@@ -508,11 +512,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     /* ── Phase 3: Check for solution candidates ──────────────────────────── */
     int valid_solutions = 0;
 
-    /* DEBUG: read first 8 bytes of buf_tree1 directly (stage7 output slot 0) */
-    { uint32_t raw[2] = {0,0};
-      clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, 8, raw, 0, NULL, NULL);
-      fprintf(stderr, "  DEBUG buf_tree1[0..7]: 0x%08x 0x%08x\n", raw[0], raw[1]); }
-
     if (curr) {
         uint32_t nsol = 0;
         clEnqueueReadBuffer(queue, buf_counts[6], CL_TRUE,
@@ -531,25 +530,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                                     tree_size * sizeof(uint32_t), cpu_attrs[r], 0, NULL, NULL);
             }
 
-            /* Debug: trace first candidate completely */
-            fprintf(stderr, "DEBUG tree_size=%u nsol=%u\n", (uint)tree_size, nsol);
-            if (nsol > 0) {
-                uint32_t flat = 0; /* candidate 0 */
-                for (int r = 7; r >= 1; r--) {
-                    uint32_t a = cpu_attrs[r][flat];
-                    uint32_t bk = a >> 12, si = (a >> 6) & 0x3F, sj = a & 0x3F;
-                    fprintf(stderr, "  r=%d flat=%u attr=0x%08x bk=%u si=%u sj=%u -> flats %u %u\n",
-                            r, flat, a, bk, si, sj, bk*NSLOTS+si, bk*NSLOTS+sj);
-                    flat = bk * NSLOTS + si; /* follow left child only */
-                }
-                fprintf(stderr, "  r=0 flat=%u xi=%u\n", flat, cpu_attrs[0][flat]);
-            }
-            /* Extra debug: trace first candidate fully with listindices */
-            { int cnt = 0; uint32_t idx[PROOFSIZE];
-              listindices(cpu_attrs, PARAM_K, 0, idx, &cnt, (uint32_t)tree_size);
-              fprintf(stderr, "  DEBUG full trace cnt=%d first=%u last=%u\n", cnt, cnt>0?idx[0]:0, cnt>0?idx[cnt-1]:0);
-              if (cnt > 0) { fprintf(stderr, "  indices:"); for(int _x=0;_x<cnt&&_x<16;_x++) fprintf(stderr," %u",idx[_x]); fprintf(stderr,"...\n"); }
-            }
             uint32_t tree_sz = (uint32_t)tree_size;
             int n_extracted = 0, n_verified = 0;
             for (uint32_t s = 0; s < nsol; s++) {
@@ -593,10 +573,16 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
 int main(int argc, char *argv[]) {
     uint32_t total_nonces = 100000;
 
-    if (argc > 1) {
-        total_nonces = atoi(argv[1]);
+    /* Parse optional -p <platform_idx> before nonce count */
+    int arg_start = 1;
+    if (argc > 2 && strcmp(argv[1], "-p") == 0) {
+        g_platform_idx = atoi(argv[2]);
+        arg_start = 3;
+    }
+    if (argc > arg_start) {
+        total_nonces = atoi(argv[arg_start]);
         if (total_nonces < 1 || total_nonces > 100000000) {
-            fprintf(stderr, "Usage: %s [nonces]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [-p platform_idx] [nonces]\n", argv[0]);
             return 1;
         }
     }
