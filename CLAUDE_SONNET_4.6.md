@@ -78,9 +78,323 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#24 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#31 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 23 State (2026-03-16) — IN PROGRESS
+### ⚠️ Session 30 State (2026-03-17) — IN PROGRESS
+
+#### Goal
+Fix 0 solutions extracted. Diagnose and fix GPU-side attr extraction.
+
+#### What was done (Session 30)
+
+**Option B debug** (confirmed `curr` is correct buffer at every stage — buffer identity not the problem):
+```
+extract s=0 buf=tree0 / s=1 buf=tree1 / s=2 curr=tree0 / ... s=7 curr=tree1
+```
+
+**Option A fix applied**: Changed `kernel_extract_attrs` in input.cl to use `base_offset` kernel arg instead of `global_work_offset`. Updated all 3 call sites in sa-tromp.c. Build OK.
+
+**Still 0 solutions extracted.** Deeper diagnosis revealed:
+
+**Root cause found (deeper)**: The attrs for stages 5-7 ARE correct (0x00000001 = src=0, i=0, j=1 is a real collision). The extraction mechanism is working correctly. The problem is **duplicate leaf indices** during listindices traversal — the full 128-leaf trace shows repeated indices like `1412780 19480787 19480787 20628471 1412780...`.
+
+**Why duplicates?** With RESTBITS=5 (512K buckets), avg hashes/bucket = 64 = NSLOTS exactly. With NSLOTS=64, severe overflow at Stage 0 (244K overflows). False collisions from overflow produce spurious solution candidates that pass XOR checks but have overlapping subtrees → duplicate leaf indices → all 3348 candidates fail distinct check.
+
+**RESTBITS=4 test** (1M buckets, avg 32/bucket, less overflow): tried reverting, but OOM killed process — 1M × 64 × 28 × 2 trees + 8 × 128MB gpu_attrs ≈ 4.9GB → exceeds 5.8GB shared RAM in practice.
+
+**Current state**:
+- RESTBITS=4 in sa-tromp.c (reverted back for testing), but OOM kills
+- RESTBITS=5 in input.cl (NOT yet reverted — inconsistency! Must fix)
+- Debug code still in sa-tromp.c (multiple fprintf, pre-extraction reads, full trace)
+- Committed: f7caf16 (base state), changes uncommitted
+
+#### ⚠️ IMPORTANT: Fix before next session
+sa-tromp.c has `RESTBITS=4` but input.cl has `RESTBITS=4` now — actually need to check consistency.
+
+#### Root cause: NSLOTS=64 insufficient for RESTBITS=5
+
+With RESTBITS=5: avg 64/bucket. Need NSLOTS ≥ ~96 to handle variance.
+With NSLOTS=96 and RESTBITS=5:
+- buf_tree0 = 512K × 96 × 28 = 1.34 GB
+- buf_tree1 = 512K × 96 × 28 = 1.34 GB
+- gpu_attrs[8] × (512K × 96 × 4) = 8 × 197MB = 1.57 GB
+- Total ≈ 4.4 GB → fits in 5.8GB ✓
+
+#### Next session plan (Session 31)
+
+**Step 1: Clean up — remove all debug code from sa-tromp.c**
+Remove all `fprintf(stderr, "  DEBUG...` lines and the pre-extraction direct-read blocks added in Session 30. Also remove the full trace debug block before the extraction loop.
+
+**Step 2: Verify both files have consistent RESTBITS=5**
+- sa-tromp.c: `#define RESTBITS 5`
+- input.cl: `#define RESTBITS 4` → change to 5
+
+**Step 3: Increase NSLOTS to 96 in both files**
+- sa-tromp.c line 34: `#define NSLOTS 96`  (was 64)
+- input.cl line 1153: `#define NSLOTS_STAGE1 96`  (was 64)
+- Also update the `_slot_sz` comment in sa-tromp.c if needed (array values unchanged — slot sizes don't depend on NSLOTS)
+
+**Step 4: Build and test**
+```bash
+make clean && make -j4 sa-tromp
+./sa-tromp 1 2>&1 | tail -15
+```
+Expected: Stage 0 overflow near 0 (avg 64/bucket, NSLOTS=96 gives headroom), solutions extracted > 0.
+
+**Step 5: Verify**
+```bash
+./sa-tromp 1 2>&1 | grep "^Solution" | head -1 | sed 's/Solution //' > /tmp/sol_sa.txt
+./test_verifier "$(printf '%280s' | tr ' ' '0')" /tmp/sol_sa.txt
+```
+Expected: PASSED
+
+**Step 6: Intel OpenCL driver check**
+```bash
+ls /etc/OpenCL/vendors/
+clinfo | grep -i "platform name"
+```
+
+**Step 7: Commit**
+```
+fix: NSLOTS=96 + RESTBITS=5 — reduce overflow, enable valid solutions
+
+- NSLOTS 64→96 in sa-tromp.c and input.cl
+- RESTBITS=5 consistent in both files
+- Removed all Session 30 debug code
+- Status: working
+- Next: Intel OpenCL driver test, then Stratum
+```
+
+### ⚠️ Session 29 State (2026-03-17) — SUPERSEDED BY SESSION 30
+
+#### Goal
+Replace Phase 3b re-run with GPU-side first-pass attr extraction. No re-run, no OOM.
+
+#### What was done (Session 29)
+- Implemented gpu_attrs[8] allocation before Phase 1
+- Added batched `kernel_extract_attrs_k` calls after each stage (stages 0, 1, 2-7)
+- Deleted Phase 3b re-run entirely
+- Added CPU readback of gpu_attrs before Phase 3c extraction
+- **Build: OK**, **OOM: gone**, **Runtime: 1.27s/nonce**
+- **Problem**: 0 solutions extracted — debug trace shows attrs[7..5] = 0x00000001 (sequential small ints = wrong), attrs[4..0] look correct (large bucket/slot encoded values)
+- Committed: f7caf16 (debug code still in place)
+
+#### Root cause hypothesis
+`kernel_extract_attrs_k` batched dispatch with `global_work_offset != NULL` may be failing silently for stages 5-7. Evidence: stages 5-7 produce sequential 0x1, 0x2, 0x3... values (look like uninit/previous buffer content), while stages 0-4 look correct. The timing increase (stage 2: 0.03→0.08s) confirms batches run, but the written values are wrong for higher stages.
+
+**User note**: also use intel opencl driver (not just Beignet).
+
+#### Next session plan (Session 30)
+
+**Diagnosis step first — narrow the root cause:**
+
+Option A: `global_work_offset` bug — Beignet may silently ignore non-NULL offsets for certain kernel types. Fix: pass `NULL` offset, use a `uint base_offset` kernel arg instead. Modify `kernel_extract_attrs` in `input.cl`:
+```c
+__kernel void kernel_extract_attrs(
+    __global const uchar *tree, uint slot_stride, __global uint *out,
+    uint base_offset)
+{ size_t k = get_global_id(0) + base_offset;
+  out[k] = *((__global const uint *)(tree + (size_t)k * slot_stride)); }
+```
+Then dispatch: `base = 0..tree_size step DISPATCH`, pass `base_offset = (uint)base`, offset param = NULL, gws = DISPATCH.
+
+Option B: Stages 5-7 ping-pong targets wrong buffer — verify `curr` at extraction time equals the just-written buffer by adding a fprintf debug for each s showing which buffer (tree0 vs tree1) is being extracted.
+
+Option C: Beignet `CL_MEM_READ_WRITE` buffers for gpu_attrs are aliased or zero-initialized and the extract kernel writes are lost due to missing sync. Try `clFinish(queue)` after ALL extract batches complete before reading back.
+
+**Recommended approach for Session 30:**
+1. First: add Option B debug (2 lines) to confirm `curr` is correct — compile + run
+2. If curr is correct: implement Option A (modify input.cl + call sites) — `make clean && make -j4` + run
+3. Remove debug code once working
+4. Run test_verifier to confirm solutions valid
+5. Commit + update this doc
+
+**Build note (user reminder)**: when editing `input.cl`, use `make clean && make -j4 sa-tromp` (not just `make`) since `_kernel.h` must be regenerated.
+
+### ⚠️ Session 27 State (2026-03-17) — SUPERSEDED BY SESSION 28
+
+#### Goal
+Fix blake convention so test_verifier passes, then memory optimization.
+
+#### What was done
+- **Diagnosed blake failure**: Sessions 23-26 had wrong block2 layout. Root cause: `zcash_blake2b_update(hdr, 128)` doesn't compress (buffers only); need `blake2b_update(headernonce, 140)` so first 128 bytes are compressed as block1, 12-byte tail buffered.
+- **Fixed** (commit 6363cd4):
+  - `mine_batch`: 140-byte headernonce, nonce at bytes 128-131 (`((u32*)hn)[32]`); uses Tromp `blake2b_update(headernonce, 140)`; h[] sent to GPU = h after compressing bytes 0-127.
+  - GPU `kernel_round0_gen`: `word0=nonce` (kernel arg3), `word1=(ulong)i<<32` (g in m[1] high32 = bytes 12-15 of block2)
+  - CPU `eh_genhash`: `message[0]=nonce`, `message[1]=(uint64_t)g<<32`
+- **Result**: nonce 0 → 2 solutions found, **both VERIFICATION PASSED** by test_verifier ✅
+- **Solutions match eq1927 exactly** (first solution indices identical) ✅
+
+#### Current state
+- Last commit: 6363cd4
+- `./sa-tromp 1` → nonce 0: 2 VERIFIED OK, ~10.7s/nonce (swap-backed, 245GB SSD swap)
+- test_verifier: PASSED ✅
+- Solutions match eq1927: YES ✅
+- Memory: still needs 245GB swap. NSLOTS=64, NBUCKETS=1M → ~6-7 GB GPU buffers
+
+#### Next session plan (Session 28) — Memory optimization
+**Decision: memory optimization first, then Stratum.**
+
+**Step 1: RESTBITS=5 (NBUCKETS=512K)**
+- `sa-tromp.c:31`: `#define RESTBITS 5`
+- `input.cl:1150`: `#define RESTBITS 5`
+- Buffer math: 512K × 64 × 28 = 917 MB per stage buffer; 4 main buffers ≈ 3.7 GB → fits in 5.8 GB
+- `make -j4 sa-tromp && ./sa-tromp 1` — expect VERIFIED OK, no OOM, no swap
+- If RESTBITS=5 still OOMs → try RESTBITS=6 (NBUCKETS=256K, ~1.8 GB total)
+- If bucket overflow appears (Stage 0 max > NSLOTS=64) → may need NSLOTS bump
+
+**Step 2: Verify correctness after RESTBITS change**
+- `./sa-tromp 1 | grep "^Solution" | head -1 | sed 's/Solution //' > /tmp/sol.txt`
+- `./test_verifier "$(printf '%280s' | tr ' ' '0')" /tmp/sol.txt` — must PASS
+- Commit: `fix: RESTBITS=5 — NBUCKETS=512K, fits in 5.8GB RAM without swap`
+
+**Step 3: Stratum integration** (see memory file `project_stratum_plan.md`)
+
+### ⚠️ Session 26 State (2026-03-17) — SUPERSEDED BY SESSION 27
+
+#### Goal
+Get valid solutions confirmed by test_verifier, then optimize memory so NSLOTS=64 works without swap.
+
+#### What was done
+- **Root cause found**: NSLOTS=40 caused 74320 overflows at Stage 0 → fake solutions (all with duplicate leaf indices). eq1927 uses NSLOTS=64.
+- **Fix**: NSLOTS=64 in sa-tromp.c + input.cl → zero overflow, nonce 0 gives 1 VERIFIED OK ✅
+- **Commit**: 1b4c254
+- **CRITICAL CAVEAT**: NSLOTS=64 requires large swap space. Tested with 245GB SSD swap. Without swap (5.8GB shared GPU RAM), process is OOM-killed — Claude Code itself + GPU buffers exceed available RAM.
+- **Architecture A vs B investigation**:
+  - **Arch B** (current, commit 258bd3e → 1b4c254): nonce embedded in 128-byte block1 headernonce; CPU eh_genhash sends 16-byte block2 (t=144). This is what we have working.
+  - **Arch A** (b9d02b1 layout): nonce as kernel arg; GPU word0=blake_state[8]; not yet re-tested after Arch B decision.
+  - Decision: Arch B is working. Arch A comparison deferred — not needed unless memory optimization requires it.
+- Removed all debug prints from sa-tromp.c and solution_extraction.c.
+
+#### Current state
+- Last commit: 1b4c254
+- `./sa-tromp 1` → nonce 0: 1 VERIFIED OK, 9.6s/nonce (swap-backed)
+- Our solution does NOT match eq1927's solutions for nonce 0 — different blake conventions suspected. Need test_verifier to confirm.
+
+#### Next session plan (Session 27)
+
+**Step 1: Verify solution with test_verifier (ground truth)**
+```bash
+./sa-tromp 1 2>&1 | grep "^Solution" | head -1 | sed 's/Solution //' > /tmp/sol_sa.txt
+# headernonce = 280 hex zeros (header=0, nonce=0 at bytes 108-111)
+./test_verifier "$(printf '%280s' | tr ' ' '0')" /tmp/sol_sa.txt
+```
+Expected: PASSED → our blake convention is correct.
+If FAILED → blake convention still wrong vs Tromp 140-byte standard.
+
+**Step 2: Memory optimization (NSLOTS=64 without swap)**
+Goal: Run without 245GB SSD swap. Options:
+- **Option A**: Eliminate cpu_attrs CPU-side readback (1.28GB) — do extraction on GPU directly
+- **Option B**: Reduce peak by streaming extraction (one stage at a time, free before next)
+- **Option C**: Accept NSLOTS<64 but fix false-solution filtering (reject duplicates earlier)
+See plan: `/home/mine/.claude/plans/shimmering-wibbling-otter.md`
+
+### ⚠️ Session 25 State (2026-03-17) — SUPERSEDED BY SESSION 26
+
+#### Goal
+Complete Session 24 original plan: implement both Architecture A and B, test each vs eq1927, then decide which is best for memory optimization.
+
+#### What was done
+- Applied Option B byte-counter fix: `sa-tromp.c:69` `sizeof(uint32_t)` → `2 * sizeof(uint64_t)` (t=128+4=132 → 128+16=144)
+- Confirmed: nonce 2 → 1 extracted, 1 VERIFIED OK ✅
+- Added debug prints (NOT committed, NOT removed yet)
+- Context got too high — stopping here
+
+#### Current uncommitted state
+- `sa-tromp.c`: byte-counter fix applied + debug prints at ~line 594
+- Last commit: 258bd3e
+
+#### Next session plan (Session 26)
+
+**Step 0: Remove debug prints** (`sa-tromp.c` ~line 594 — remove 4-line `if (s == 0)` block)
+
+**Step 1: Finish Architecture B (current)**
+```bash
+make sa-tromp -j4 && ./sa-tromp 5   # expect ≥1 VERIFIED OK
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep Solution
+./sa-tromp 1 2>&1 | grep SOLUTION   # compare solutions
+```
+Commit: `fix: Arch B byte counter — t=144 (128+16)`
+
+**Step 2: Implement Architecture A (nonce as kernel arg)**
+Revert eh_genhash + kernel to b9d02b1 layout:
+- CPU `eh_genhash`: `message[0]=nonce`, `message[1]=g<<32`, 16 bytes
+- GPU `kernel_round0_gen`: `word0 = blake_state[8]` (nonce in extra slot), `word1=(ulong)i<<32`
+Test vs eq1927 same way.
+Commit: `feat: Arch A baseline — nonce as kernel arg`
+
+**Step 3: Memory comparison**
+Document which architecture uses less memory and choose one.
+See plan: `/home/mine/.claude/plans/shimmering-wibbling-otter.md`
+
+### ⚠️ Session 24 State (2026-03-17) — SUPERSEDED BY SESSION 25
+
+#### Goal
+Fix blake convention to match Tromp/eq1927 standard for pool compatibility.
+
+#### What was done
+- **Fixed session 23 extraction regression** (commit 3ffdc2c): reverted eh_genhash to use `blake2b_state_t` + `zcash_blake2b_update/final`, reverted verify call to `&blake_gen`. Restored 2/5 VERIFIED OK.
+- **Diagnosed b9d02b1 baseline**: confirmed h[8] is nonce-independent (Tromp blake2b buffers 128 bytes without compressing). b9d02b1 worked because nonce was kernel arg.
+- **Implemented Tromp standard** (commit 258bd3e): nonce at headernonce[108-111], zcash_blake2b_init+update(128,0) for block1 state, eh_genhash message[0]=g, kernel word0=(ulong)i.
+- **Current status**: nonces vary (different candidate counts per nonce ✓), extraction 0 — GPU/CPU hash mismatch suspected.
+  - Nonce 0: 837 candidates, 0 extracted
+  - Nonce 1: 1350 candidates, 0 extracted
+  - Nonce 2: 1413 candidates, **1 extracted**, 0 verified ← close!
+
+#### Key facts
+- `zcash_blake2b_init` hardcodes "ZERO_PoW" personalization ✓
+- `zcash_blake2b_update(st, headernonce, 128, 0)` with is_final=0 compresses block1 immediately (no buffering) → h[8] varies with nonce ✓
+- GPU kernel: `word0 = (ulong)i` (i = blake call index g), `word1 = 0`
+- CPU eh_genhash: `message[0] = (uint64_t)g`, `zcash_blake2b_update(st, message, 4, 1)` as final
+- Extraction finds 1 candidate for nonce 2 but verification fails → hash mismatch GPU vs CPU
+
+#### Root cause hypothesis
+`zcash_blake2b_update(&st, message, 4, 1)` with `msg_len=4` — the zcash function requires the message to be **zero-padded to 128 bytes** (see comment: "must be zero-padded to 128 bytes if final block"). Using `message[16]={0}` with only 4 bytes set ensures the remaining 124 bytes ARE zero. And `v[12] ^= (st.bytes += 4)` → `v[12] ^= 132` (not 144!).
+
+The problem: GPU uses `v[12] ^= 144` (hardcoded), but CPU's `st.bytes` after block1 = 128, then `+=4` → 132. They disagree on the byte counter!
+
+#### Next session plan
+
+**Step 1: Fix CPU byte counter**
+After `zcash_blake2b_init` + `zcash_blake2b_update(headernonce, 128, 0)`:
+- `blake_gen.bytes` = 128 ✓ (set by zcash update)
+- Then `zcash_blake2b_update(st, message, 4, 1)` → `v[12] ^= (128+4) = 132`
+- But GPU has `v[12] ^= 144`
+
+So either:
+- GPU should use `v[12] ^= 132` (4-byte block2: 128+4=132)
+- OR CPU should pass more bytes to match 144
+
+**Tromp eq1927**: `blake2b_update(&state, &leb, 4)` + `blake2b_final` → Tromp's counter gives `t = 140+4 = 144` because headernonce was 140 bytes, not 128.
+
+**The real issue**: CPU uses 128-byte block1 (zcash convention), but Tromp uses 140-byte headernonce. The byte counter differs: 128+4=132 vs 140+4=144.
+
+**Two valid fixes**:
+- Option A: CPU feeds 140 bytes (need to handle Tromp buffering issue — use padding trick: feed 128+12 bytes in two calls)
+- Option B: CPU feeds 128+16 bytes to get t=144, with 12 bytes of zeros before g (matches GPU's 128-byte block1 + 16-byte block2)
+
+**Simplest fix (Option B)**: In eh_genhash, set `message[0]=0...(12 zero bytes)...g` and pass 16 bytes: `zcash_blake2b_update(st, message, 16, 1)` — this gives t=128+16=144 ✓. The GPU word0=0 for first 8 bytes, then word1 = g in bytes 8-11? No — GPU word0=(ulong)i occupies bytes 0-7 of the message block.
+
+Actually GPU block2 is: `word0=(ulong)i` at m[0] (bytes 0-7), `word1=0` at m[1] (bytes 8-15). CPU message[0]=g (bytes 0-7 = g in low32), message[1]=0 (bytes 8-15). These match as long as g fits in low32 of m[0].
+
+The byte count fix: CPU should pass `16` bytes (not `4`) to get t=144. Already in b9d02b1: `zcash_blake2b_update(st, message, 2*sizeof(uint64_t), 1)` = 16 bytes → t=128+16=144 ✓.
+
+**Action**: In eh_genhash, change `sizeof(uint32_t)` back to `2 * sizeof(uint64_t)` (=16). Keep `message[0]=g`.
+
+**Step 2: Test**
+```bash
+make sa-tromp && ./sa-tromp 5
+```
+Expected: ~2/5 VERIFIED OK with new solutions (Tromp-compatible).
+
+**Step 3: Compare against eq1927**
+```bash
+./equihash_tromp/eq1927 -s -p "ZERO_PoW" -n 0 2>&1 | grep Solution
+./sa-tromp 1 2>&1 | grep SOLUTION
+```
+If solutions match → pool compatible ✓.
+
+### ✅ Session 23 State (2026-03-16) — SUPERSEDED BY SESSION 24
 
 #### Goal
 Fix blake convention to match Tromp/eq1927 standard for pool compatibility.

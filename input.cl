@@ -1147,9 +1147,9 @@ typedef struct {
 } stage0_slot_t;
 
 /* Collision detection constants */
-#define RESTBITS        5
+#define RESTBITS        4
 #define BUCKBITS        (24 - RESTBITS)
-#define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^19 = 512K */
+#define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^20 = 1M */
 #define NSLOTS_STAGE1   64
 
 /* Hash widths at each stage (bytes remaining after XOR cancellation) */
@@ -1591,8 +1591,9 @@ void kernel_round0_gen(
 __kernel void kernel_extract_attrs(
     __global const uchar *tree,
     uint slot_stride,
-    __global uint *out)
+    __global uint *out,
+    uint base_offset)
 {
-    size_t k = get_global_id(0);
-    out[k] = *((__global const uint *)(tree + (size_t)k * slot_stride));
+    size_t k = (size_t)get_global_id(0) + base_offset;
+    out[k] = *((__global const uint *)(tree + k * slot_stride));
 }

@@ -28,7 +28,7 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 5
+#define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
 #define NBUCKETS (1<<BUCKBITS)  // 512K buckets
 #define NSLOTS 64
@@ -357,7 +357,9 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
           clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[0]);
           for (size_t base = 0; base < tree_size; base += DISPATCH) {
               size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
-              clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, &base, &d, NULL, 0, NULL, NULL);
+              uint32_t base_u = (uint32_t)base;
+              clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
+              clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
               clFinish(queue);
           } }
         clReleaseMemObject(buf_blake_st);
@@ -420,7 +422,9 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
           clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[1]);
           for (size_t base = 0; base < tree_size; base += DISPATCH) {
               size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
-              clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, &base, &d, NULL, 0, NULL, NULL);
+              uint32_t base_u = (uint32_t)base;
+              clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
+              clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
               clFinish(queue);
           } }
         /* tree0 reused as ping-pong buffer — do NOT release here */
@@ -466,6 +470,15 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clFinish(queue);
             }
 
+            /* DEBUG: direct read of first 3 slots from curr before extraction */
+            if (s >= 5) {
+                uint32_t raw[12] = {0};
+                size_t nb = (size_t)_slot_sz[s] * 3;
+                clEnqueueReadBuffer(queue, curr, CL_TRUE, 0, nb, raw, 0, NULL, NULL);
+                fprintf(stderr, "  DEBUG s=%d curr first-3-slots:", s);
+                for (int _x = 0; _x < (int)(nb/4); _x++) fprintf(stderr, " %08x", raw[_x]);
+                fprintf(stderr, "\n");
+            }
             /* Extract attrs[s] from curr (just-written output buffer, batched) */
             { uint32_t stride = (uint32_t)_slot_sz[s];
               clSetKernelArg(kernel_extract_attrs_k, 0, sizeof(cl_mem), &curr);
@@ -473,7 +486,9 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
               clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[s]);
               for (size_t base = 0; base < tree_size; base += DISPATCH) {
                   size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
-                  clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, &base, &d, NULL, 0, NULL, NULL);
+                  uint32_t base_u = (uint32_t)base;
+                  clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
+                  clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
                   clFinish(queue);
               } }
             prev = curr;
@@ -492,6 +507,11 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
 
     /* ── Phase 3: Check for solution candidates ──────────────────────────── */
     int valid_solutions = 0;
+
+    /* DEBUG: read first 8 bytes of buf_tree1 directly (stage7 output slot 0) */
+    { uint32_t raw[2] = {0,0};
+      clEnqueueReadBuffer(queue, buf_tree1, CL_TRUE, 0, 8, raw, 0, NULL, NULL);
+      fprintf(stderr, "  DEBUG buf_tree1[0..7]: 0x%08x 0x%08x\n", raw[0], raw[1]); }
 
     if (curr) {
         uint32_t nsol = 0;
@@ -523,6 +543,12 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                     flat = bk * NSLOTS + si; /* follow left child only */
                 }
                 fprintf(stderr, "  r=0 flat=%u xi=%u\n", flat, cpu_attrs[0][flat]);
+            }
+            /* Extra debug: trace first candidate fully with listindices */
+            { int cnt = 0; uint32_t idx[PROOFSIZE];
+              listindices(cpu_attrs, PARAM_K, 0, idx, &cnt, (uint32_t)tree_size);
+              fprintf(stderr, "  DEBUG full trace cnt=%d first=%u last=%u\n", cnt, cnt>0?idx[0]:0, cnt>0?idx[cnt-1]:0);
+              if (cnt > 0) { fprintf(stderr, "  indices:"); for(int _x=0;_x<cnt&&_x<16;_x++) fprintf(stderr," %u",idx[_x]); fprintf(stderr,"...\n"); }
             }
             uint32_t tree_sz = (uint32_t)tree_size;
             int n_extracted = 0, n_verified = 0;
