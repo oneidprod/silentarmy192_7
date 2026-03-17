@@ -51,26 +51,28 @@ typedef uint32_t uint;
 #define htole32(x) ((uint32_t)(x))
 #endif
 
-static void eh_genhash(const blake2b_state *ctx, uint32_t idx, uint32_t nonce, uint8_t *hash)
+static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce, uint8_t *hash)
 {
     /* Match GPU kernel_round0_gen block 2 layout:
      *   m[0] low32 = nonce, m[1] high32 = i (=idx/hashes_per_blake)
-     * ctx = h after block1 (bytes 0-127, no nonce); uses Tromp blake for multi-block. */
-    blake2b_state st = *ctx;
+     * ctx = h after block1 (bytes 0-127, no nonce); bytes=128. */
+    blake2b_state_t st = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
     const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
     uint8_t full_hash[ZCASH_HASH_LEN];
+    uint64_t message[16] = {0};
     uint32_t g = idx / hashes_per_blake;
-    /* Block 2 bytes: [nonce(4)] [zeros(4)] [zeros(4)] [g(4)] [zeros(112)] = 128 bytes */
-    uint64_t message[2] = { (uint64_t)nonce, (uint64_t)g << 32 };
-    blake2b_update(&st, (const uint8_t *)message, sizeof(message));
-    blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
+    message[0] = (uint64_t)nonce;          /* m[0] low32 = nonce */
+    message[1] = (uint64_t)g << 32;        /* m[1] high32 = blake-call index */
+    st.bytes = 128;                        /* initial state was built after block1 (128 bytes) */
+    zcash_blake2b_update(&st, (const uint8_t *)message, 2 * sizeof(uint64_t), 1);
+    zcash_blake2b_final(&st, full_hash, ZCASH_HASH_LEN);
     memcpy(hash, full_hash + (idx % hashes_per_blake) * hash_bytes, hash_bytes);
 }
 
 static int verbose = 0;
 
-static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
+static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
 {
     const uint32_t hash_bytes = PARAM_N / 8;
 
@@ -129,7 +131,7 @@ static uint32_t eh_verifyrec(const blake2b_state *ctx, uint32_t *indices, uint8_
     return 1;
 }
 
-static uint32_t verify_equihash_full(uint32_t *indices, const blake2b_state *blake_ctx,
+static uint32_t verify_equihash_full(uint32_t *indices, const blake2b_state_t *blake_ctx,
                                       uint32_t nonce, int verbose_mode)
 {
     verbose = verbose_mode;
@@ -610,7 +612,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 if (!extract_solution(cpu_attrs, s, indices, tree_sz)) continue;
                 n_extracted++;
                 canonical_sort(indices, PARAM_K);
-                if (verify_equihash_full(indices, &tromp_st, nonce_idx, n_extracted == 1 ? 1 : 0)) {
+                if (verify_equihash_full(indices, &blake_gen, nonce_idx, 0)) {
                     n_verified++;
                     printf("  SOLUTION nonce=%u:", nonce_idx);
                     for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
