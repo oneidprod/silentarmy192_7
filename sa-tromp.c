@@ -28,9 +28,9 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 4
+#define RESTBITS 5
 #define BUCKBITS (24-RESTBITS)
-#define NBUCKETS (1<<BUCKBITS)  // 1M buckets
+#define NBUCKETS (1<<BUCKBITS)  // 512K buckets
 #define NSLOTS 64
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
@@ -265,8 +265,8 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  */
 int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     cl_int err;
-    /* Beignet safe dispatch size: 2^20 work items per clEnqueueNDRangeKernel */
-    const size_t DISPATCH = (size_t)(1 << 20);
+    /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
+    const size_t DISPATCH = (size_t)(1 << 18);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
     uint32_t *cpu_attrs[8] = {NULL};
     /* GPU slot sizes with 4-byte alignment padding (matches Beignet OpenCL C sizeof).
@@ -521,7 +521,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             cl_mem scratch_a = clCreateBuffer(context, CL_MEM_READ_WRITE,
                 tree_size * 28, NULL, &err);  /* max slot size = 28 */
             check_error(err, "scratch_a");
-            cl_mem scratch_b = NULL; /* allocated after buf_tree0 released below */
 
             /* Reinit buf_t0_cnt was already released — need stage0 count for stage1.
              * Re-read it from existing buf_tree0 data: use buf_counts[0] which we just
@@ -566,14 +565,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             clReleaseMemObject(buf_tree0);
             /* buf_tree1 already released above (before scratch alloc).
              * buf_tree0 now released — safe to alloc scratch_b (peak stays 2.24GB). */
-            scratch_b = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                tree_size * 28, NULL, &err);
-            check_error(err, "scratch_b");
-
-            /* Run stages 1-7, ping-ponging scratch_a / scratch_b */
+            /* Run stages 1-7. Use single-buffer approach: allocate output, run stage,
+             * extract attrs from output, free input. Peak GPU = 1 tree (1.84GB) instead
+             * of 2 trees (3.68GB), keeping total within 5.4GB available RAM. */
             cl_mem sp = scratch_a, sc = NULL;
             for (int s = 1; s <= 7; s++) {
-                sc = (s % 2 == 1) ? scratch_b : scratch_a;
+                sc = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                    tree_size * 28, NULL, &err);
+                check_error(err, "scratch_sc");
                 cl_mem cnt_in  = (s == 1) ? buf_t0_cnt2 : buf_counts[s-2];
                 cl_mem cnt_out = buf_counts[s-1];
 
@@ -590,12 +589,12 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                     clFinish(queue);
                 }
 
+                clReleaseMemObject(sp);  /* free input — no longer needed */
                 EXTRACT_ATTRS(s, sc, _slot_sz[s]);
                 sp = sc;
             }
+            clReleaseMemObject(sc);  /* free final output (stage7) */
             clReleaseMemObject(buf_t0_cnt2);
-            clReleaseMemObject(scratch_a);
-            clReleaseMemObject(scratch_b);
             #undef EXTRACT_ATTRS
 
             /* Re-read nsol from re-run's Stage 7 output (buf_counts[6]).
