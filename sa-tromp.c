@@ -17,6 +17,7 @@
 #include <time.h>
 #include <endian.h>
 #include <unistd.h>
+#include <signal.h>
 #include <CL/cl.h>
 
 // Type definitions needed by param.h
@@ -78,6 +79,8 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce,
 
 static int verbose = 0;
 volatile int g_cancel_mining = 0;
+static volatile int g_shutdown = 0;
+static void sigint_handler(int s) { (void)s; g_shutdown = 1; g_cancel_mining = 1; }
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
 {
@@ -652,7 +655,7 @@ static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
 static void *stratum_recv_thread(void *arg)
 {
     stratum_ctx_t *ctx = (stratum_ctx_t *)arg;
-    while (1) {
+    while (!g_shutdown) {
         if (stratum_recv_line(ctx) < 0) {
             fprintf(stderr, "[stratum] Disconnected\n");
             break;
@@ -693,7 +696,7 @@ static void run_stratum_mode(const char *host, const char *port,
     pthread_create(&recv_tid, NULL, stratum_recv_thread, &ctx);
 
     uint32_t nonce2 = 0;
-    while (1) {
+    while (!g_shutdown) {
         stratum_job_t job;
         if (!stratum_get_job(&ctx, &job)) {
             usleep(100000);
@@ -723,12 +726,13 @@ static void run_stratum_mode(const char *host, const char *port,
         (void)nonce2;
     }
 
-    pthread_join(recv_tid, NULL);
     stratum_disconnect(&ctx);
+    pthread_join(recv_tid, NULL);
     cleanup_opencl();
 }
 
 int main(int argc, char *argv[]) {
+    signal(SIGINT, sigint_handler);
     uint32_t total_nonces = 100000;
     char stratum_url[256] = {0};
     char stratum_user[256] = {0};
