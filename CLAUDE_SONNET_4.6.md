@@ -78,9 +78,162 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#35 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#39 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 34 State (2026-03-18) — IN PROGRESS
+### ⚠️ Session 38 State (2026-03-18) — IN PROGRESS
+
+#### Goal
+Apply Opus root-cause fix (nonce at byte 108, pool-compatible) and test pool.
+
+#### What was done (Session 38)
+
+**Commits this session:**
+- `8b6fa8a`: Committed leftover session 37 stratum fixes (subscribe parser, nonce2_size, clFinish, -n flag)
+- `895024f`: Nonce placement fix — byte 108 (pool-compatible)
+
+**Nonce placement fix applied:**
+- `sa-tromp.c`: `headernonce[27]` (was `[32]`) — nonce at bytes 108-111
+- `sa-tromp.c`: `eh_genhash message[0] = 0` (nonce in block1 state, not block2)
+- `input.cl`: `word0 = 0` (same rationale)
+- Solo test: `./sa-tromp -p 0 1` → 2 valid solutions, VERIFIED ✓
+
+**Current state:**
+- Solo mode: ✓ nonce at byte 108, 2 valid solutions verified
+- Pool test: NOT YET DONE
+
+#### Next session plan (Session 39)
+1. Pool test: `./sa-tromp -p 0 -o stratum+tcp://zeropool.io:1241 -u <addr>.tst -P x`
+2. If accepted → success! Commit final state.
+3. If still rejected → use socat to capture traffic, inspect submit fields.
+
+### ⚠️ Session 37 State (2026-03-18) — NOTE: THIS SESSION NEVER EXECUTED AS SONNET CODE SESSION
+
+#### Note
+Session 37 was Opus performing a root-cause investigation. See `opus_nonce_findings.md` for findings. The "what was done" below reflects what Opus investigated + stratum fixes that were uncommitted at session start.
+
+#### Goal
+Fix stratum pool mining — shares rejected ("invalid solution") by zeropool.io; zpool hang unknown status.
+
+#### What was done (Session 37)
+
+**Commits this session:** none yet — changes ready to commit
+
+**Stratum fixes applied (uncommitted):**
+- `stratum.c`: subscribe parser now handles `[null, "nonce1_hex"]` format (zeropool.io sends this, not `[[subs], nonce1, nonce2_size]`)
+- `stratum.c`: nonce2_size default changed from 4 → `32 - nonce1_len` (so nonce2=56 chars when nonce1=4 bytes)
+- `stratum.c`: nonce2_submit uses `nonce2_size * 2` chars exactly (not full 64-nonce1 remainder)
+- `sa-tromp.c`: added `-n <nonce>` flag for solo mode diagnostic
+- `sa-tromp.c`: `clFinish(queue)` fence added before `mine_batch` in `run_stratum_mode`
+
+**Diagnostics run:**
+- `./sa-tromp -p 0 -n 3876859008 1` → 3.05s, 2 solutions ✓ — zpool hang is stratum-context, NOT nonce-value
+- zeropool.io test → nonce2=56 chars now, pool returns "invalid solution"
+- Pool source (`~/pool-source`) fully analysed
+
+**Confirmed facts:**
+- Blake convention IS correct: commit 448efd test_verifier PASSED
+- zeropool.io IS correctly configured for 192,7 ZERO_PoW (gminer/lolminer work fine)
+- "invalid solution" = something wrong in what WE submit (not pool misconfiguration)
+- Pool's `serializeHeader` uses jobParams fields directly (no double-reversal)
+
+#### Current state
+- Solo mode: ✓ still works
+- Stratum: connects/subscribes/authorizes/receives jobs ✓
+- nonce2 format: 56 chars ✓ (fixed this session)
+- mine_batch in stratum: unknown — clFinish fence added but zpool not retested
+- Share submission: "invalid solution" from zeropool.io — root cause not yet found
+
+#### Next session plan (Session 38)
+
+**Step 1: Commit**
+```bash
+git add sa-tromp.c stratum.c && git commit
+```
+
+**Step 2: Use socat to capture full stratum exchange**
+```bash
+# Terminal 1:
+socat -v TCP-LISTEN:9999,reuseaddr,fork TCP:zeropool.io:1241 2>&1 | tee /tmp/pool_traffic.txt
+# Terminal 2:
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/beignet":$LD_LIBRARY_PATH
+timeout 60 ./sa-tromp -p 0 -o stratum+tcp://127.0.0.1:9999 -u t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g.tst -P x
+```
+
+**Step 3:** Inspect `/tmp/pool_traffic.txt` — find mining.submit, examine nonce2 + solution fields, note error.
+
+**Step 4:** Cross-check solution compression (compress_sol.c), ntime passthrough, fd9001 prefix usage.
+
+**Step 5:** Fix, test, commit.
+
+### ⚠️ Session 36 State (2026-03-18) — SUPERSEDED BY SESSION 37
+
+#### Goal
+Fix stratum pool mining — Ctrl+C broken, shares rejected ("Invalid nonce size").
+
+#### What was done (Session 36)
+
+**Commits this session:**
+- `d3c6068`: SIGINT fix — g_shutdown + sigint_handler, disconnect-before-join, recv_thread while(!g_shutdown), main loop while(!g_shutdown) ✅
+- `1281d79`: nonce2 submit truncation fix — snprintf null-terminator was clobbering nonce_hex zero-padding; nonce2 was 8 chars not 56; fixed with memcpy ✅
+- `6eb5a9a`: debug instrumentation + ctx->cancel → g_cancel_mining hookup
+
+**nc protocol investigation** — confirmed zpool protocol:
+- subscribe response: `[[subs], "nonce1_hex"]` — NO nonce2_size field (just 2 elements)
+- nonce1 = 8 hex chars (4 bytes); nonce2 = 56 hex chars (28 bytes)
+- submit format confirmed: `[user, job_id, ntime, nonce2_56chars, fd9001+800chars]`
+- dummy submit with 56-char nonce2 → `"Invalid share"` (correct format, wrong solution) ✅
+- dummy submit with 64-char nonce2 → `"Invalid nonce size"` ✅
+- dummy submit with 8-char nonce2 → `"Invalid nonce size"` ✅
+
+**nheqminer source analysis** — confirmed our submit format matches nheqminer exactly.
+
+**Current remaining bug: mine_batch hangs in stratum context**
+- Solo mode: nonce 0 → 2.73s, 2 solutions ✅
+- Stratum mode: mine_batch called with nonce `0xe9040080` (pool nonce1 bytes packed LE) → hangs indefinitely at Stage 0, never completes
+- Non-zero header bytes do NOT cause this: tested `memset(header, 0x42)` in solo → 4.58s, works fine
+- The hang is specific to the stratum execution context (pthread environment? GPU state after stratum connect/subscribe?)
+
+**Suspected cause:** Something in the stratum connect flow (blocking socket reads on main thread, or the pthread creation) corrupts OpenCL queue state. Alternatively, the specific nonce value `0xe9040080` triggers a degenerate GPU dispatch pattern.
+
+**Test to rule in/out next session:**
+- Add `./sa-tromp -p 0 3109965952` test (nonce = 0xe9040080 = 3876859008 decimal) in solo mode to check if the nonce value itself causes hang. If solo with this nonce hangs → nonce-specific bug. If not → pthread/socket interaction corrupts OpenCL.
+
+Actually the nonce value `build_nonce([0x80,0x00,0x04,0xe9], 4, 0)` = `0xe9040080`. To test in solo mode we need to start at that nonce but solo mode always starts at 0. Quickest test: modify solo loop to start at a specific nonce, or add `-n <start>` arg.
+
+#### Current state (commit 6eb5a9a)
+- Solo mode: ✅ still works (verified nonce 0 and 1)
+- Stratum: connects/subscribes/authorizes/receives jobs ✅
+- Ctrl+C: ✅ FIXED (d3c6068)
+- nonce2 format: ✅ FIXED 56 chars (1281d79)
+- Submit format: 806-char solution with fd9001 prefix ✅
+- **mine_batch in stratum: ❌ hangs — no solutions ever submitted**
+
+#### Next session plan (Session 37)
+
+**Step 1: Determine if hang is nonce-value-specific or stratum-context-specific**
+
+Add `-n <nonce>` flag to solo mode to test a specific nonce without stratum:
+```c
+// In main(), after arg parsing:
+uint32_t start_nonce = 0;
+// parse -n <val>
+for (uint32_t n = start_nonce; n < start_nonce + total_nonces; n++)
+```
+
+Then test: `./sa-tromp -p 0 -n 3876859008 1`  (nonce = 0xe9040080)
+
+**Step 2a (if nonce is fine in solo):** The hang is stratum-context. Check if adding `clFinish(queue)` before starting mine_batch in stratum mode helps. Also check if the OpenCL queue is being shared across threads unsafely.
+
+**Step 2b (if nonce hangs in solo too):** The large nonce value causes a GPU kernel issue. Check kernel_round0_gen for uint overflow: `nonce_idx + g` where g is up to 2^24. With nonce_idx = 0xe9040080 and g = 0xFFFFFF, sum = 0xe9040080 + 0xFFFFFF = 0xEA04007F (no overflow since uint32). Should be fine.
+
+**Most likely root cause (hypothesis):** OpenCL kernels use `nonce_idx` as `uint` in GPU code. The kernel arg is set via `clSetKernelArg(..., &nonce_idx)` where nonce_idx is `uint32_t`. This is correct. But if the kernel has a code path where large nonce produces many bucket overflows → the overflow counter scan loop becomes O(N) scans × overflow count. With nonce `0xe9040080` and non-zero pool header, bucket distribution may be degenerate.
+
+### ⚠️ Session 35 State (2026-03-18) — SUPERSEDED
+
+#### Goal
+Fix stratum pool submit — shares rejected, Ctrl+C broken. (See Session 36 for what was actually done.)
+
+### ⚠️ Session 34 State (2026-03-18) — SUPERSEDED
 
 #### Goal
 Stratum pool mining integration.
