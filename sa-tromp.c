@@ -316,7 +316,7 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  *
  * NOTE: solution extraction via mine_batch_extract() (defined below).
  */
-int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress,
+int mine_batch(uint32_t nonce_idx, uint32_t nonce2_val, uint8_t *header, int show_progress,
                void (*solution_cb)(const uint32_t *indices, uint32_t nonce_idx, void *ud),
                void *ud) {
     cl_int err;
@@ -340,7 +340,8 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress,
      * GPU block2 = {0(×12), g(×4)}: word0=0, word1=g<<32 (nonce absorbed in state h). */
     uint8_t headernonce[140] = {0};
     memcpy(headernonce, header, 108);  /* header is ≤108 bytes; rest zero */
-    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
+    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);   /* nonce1 at bytes 108-111 */
+    ((uint32_t *)headernonce)[28] = htole32(nonce2_val);  /* nonce2 at bytes 112-115 */
 
     blake2b_param P = {0};
     P.digest_length = ZCASH_HASH_LEN;
@@ -722,16 +723,14 @@ static void run_stratum_mode(const char *host, const char *port,
         ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */
         clFinish(queue);  /* flush any pending OpenCL ops before starting new batch */
         fprintf(stderr, "[stratum] Mining nonce=%u (0x%08x)\n", nonce_val, nonce_val);
-        int r = mine_batch(nonce_val, job.header, 1,
+        int r = mine_batch(nonce_val, nonce2, job.header, 1,
                            stratum_solution_cb, &cb_arg);
         if (r == -1) {
-            /* Interrupted by new job */
+            /* Interrupted by new job — reset nonce2 for fresh job */
             nonce2 = 0;
             continue;
         }
-        /* Note: with nonce1_len=4, nonce2 bits don't fit in the 4-byte mining nonce.
-         * Keep nonce2=0 to avoid submitting solutions with mismatched nonce. */
-        (void)nonce2;
+        nonce2++;  /* advance nonce2 so next batch has a different nonce */
     }
 
     stratum_disconnect(&ctx);
@@ -809,7 +808,7 @@ int main(int argc, char *argv[]) {
     int total_solutions = 0;
 
     for (uint32_t n = start_nonce; n < start_nonce + total_nonces; n++) {
-        int solutions = mine_batch(n, header, 1, NULL, NULL);
+        int solutions = mine_batch(n, 0, header, 1, NULL, NULL);
         total_solutions += solutions;
         if (solutions > 0)
             printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
