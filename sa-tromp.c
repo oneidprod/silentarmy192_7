@@ -9,21 +9,26 @@
 **        Recommended: 1000000-2000000 nonces for solution probability
 */
 
+#define _DEFAULT_SOURCE   /* for usleep */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <time.h>
 #include <endian.h>
+#include <unistd.h>
 #include <CL/cl.h>
 
 // Type definitions needed by param.h
 typedef uint8_t uchar;
 typedef uint32_t uint;
 
+#include <pthread.h>
 #include "blake.h"
 #include "param.h"
 #include "_kernel.h"
+#include "compress_sol.h"
+#include "stratum.h"
 
 #define PARAM_N 192
 #define PARAM_K 7
@@ -72,6 +77,7 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce,
 }
 
 static int verbose = 0;
+volatile int g_cancel_mining = 0;
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
 {
@@ -306,7 +312,9 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  *
  * NOTE: solution extraction via mine_batch_extract() (defined below).
  */
-int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
+int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress,
+               void (*solution_cb)(const uint32_t *indices, uint32_t nonce_idx, void *ud),
+               void *ud) {
     cl_int err;
     /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
     const size_t DISPATCH = (size_t)(1 << 18);
@@ -377,6 +385,11 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                                          &base, &DISPATCH, &LWS, 0, NULL, NULL);
             check_error(err, "kernel_round0_gen");
             clFinish(queue);
+            if (g_cancel_mining) {
+                for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
+                clReleaseMemObject(buf_blake_st);
+                return -1;
+            }
         }
         /* Extract attrs[0]: allocate temp GPU buf, extract, readback to CPU, free GPU buf */
         { uint32_t stride = (uint32_t)_slot_sz[0];
@@ -443,6 +456,10 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                                          &base, &count, NULL, 0, NULL, NULL);
             check_error(err, "stage1");
             clFinish(queue);
+            if (g_cancel_mining) {
+                for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
+                return -1;
+            }
         }
         /* Extract attrs[1]: temp GPU buf, extract, readback to CPU, free GPU buf */
         { uint32_t stride = (uint32_t)_slot_sz[1];
@@ -498,12 +515,19 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             clock_t ts = clock();
             /* Stage 7 is O(NSLOTS^2) per WI — use smaller dispatch to avoid watchdog */
             size_t disp = (s == 7) ? (DISPATCH / 4) : DISPATCH;
+            int cancelled = 0;
             for (size_t base = 0; base < NBUCKETS; base += disp) {
                 size_t count = (base + disp <= NBUCKETS) ? disp : (NBUCKETS - base);
                 err = clEnqueueNDRangeKernel(queue, kernels[s-1], 1,
                                              &base, &count, NULL, 0, NULL, NULL);
                 check_error(err, "stage_kernel");
                 clFinish(queue);
+                if (g_cancel_mining) { cancelled = 1; break; }
+            }
+            if (cancelled) {
+                for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
+                free(cnt);
+                return -1;
             }
 
             /* Extract attrs[s]: temp GPU buf, extract, readback to CPU, free GPU buf */
@@ -563,14 +587,18 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 canonical_sort(indices, PARAM_K);
                 if (verify_equihash_full(indices, &blake_gen, nonce_idx, 0)) {
                     n_verified++;
-                    printf("  SOLUTION nonce=%u:", nonce_idx);
-                    for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
-                    printf("\n");
-                    printf("  VERIFIED OK\n");
-                    printf("Solution");
-                    for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
-                    printf("\n");
                     valid_solutions++;
+                    if (solution_cb) {
+                        solution_cb(indices, nonce_idx, ud);
+                    } else {
+                        printf("  SOLUTION nonce=%u:", nonce_idx);
+                        for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
+                        printf("\n");
+                        printf("  VERIFIED OK\n");
+                        printf("Solution");
+                        for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
+                        printf("\n");
+                    }
                 }
             }
 
@@ -587,25 +615,168 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
     return valid_solutions;
 }
-int main(int argc, char *argv[]) {
-    uint32_t total_nonces = 100000;
 
-    /* Parse optional -p <platform_idx> before nonce count */
-    int arg_start = 1;
-    if (argc > 2 && strcmp(argv[1], "-p") == 0) {
-        g_platform_idx = atoi(argv[2]);
-        arg_start = 3;
+/* ── Stratum pool mining ─────────────────────────────────────────────────── */
+
+typedef struct {
+    stratum_ctx_t *ctx;
+    char           job_id[STRATUM_JOB_ID_LEN];
+    char           ntime[STRATUM_NTIME_LEN];
+    uint32_t       nonce2;
+} stratum_cb_arg_t;
+
+static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
+                                 void *ud)
+{
+    (void)nonce_idx;
+    stratum_cb_arg_t *a = (stratum_cb_arg_t *)ud;
+
+    uint8_t compressed[COMPRESSED_SOL_SIZE];
+    if (get_minimal_from_indices(indices, COMPRESS_PROOFSIZE,
+                                 compressed, sizeof(compressed)) != 0) {
+        fprintf(stderr, "[stratum] compress failed\n");
+        return;
     }
-    if (argc > arg_start) {
-        total_nonces = atoi(argv[arg_start]);
-        if (total_nonces < 1 || total_nonces > 100000000) {
-            fprintf(stderr, "Usage: %s [-p platform_idx] [nonces]\n", argv[0]);
-            return 1;
+
+    char sol_hex[COMPRESSED_SOL_SIZE * 2 + 1];
+    for (int i = 0; i < COMPRESSED_SOL_SIZE; i++)
+        sprintf(sol_hex + i * 2, "%02x", compressed[i]);
+    sol_hex[COMPRESSED_SOL_SIZE * 2] = '\0';
+
+    stratum_submit(a->ctx, a->job_id, a->ntime, a->nonce2, sol_hex);
+}
+
+static void *stratum_recv_thread(void *arg)
+{
+    stratum_ctx_t *ctx = (stratum_ctx_t *)arg;
+    while (1) {
+        if (stratum_recv_line(ctx) < 0) {
+            fprintf(stderr, "[stratum] Disconnected\n");
+            break;
         }
     }
+    return NULL;
+}
+
+/* Build the 4-byte nonce value to embed in headernonce:
+ *   nonce1 bytes → low bytes, nonce2 → next bytes.
+ *   For nonce1_len=2: result = (nonce2 << 16) | (nonce1[0] | nonce1[1]<<8)
+ *   Stored LE at headernonce[128..131]. */
+static uint32_t build_nonce(const uint8_t *nonce1, int nonce1_len, uint32_t nonce2)
+{
+    uint32_t n = 0;
+    for (int i = 0; i < nonce1_len && i < 4; i++)
+        n |= ((uint32_t)nonce1[i]) << (8 * i);
+    /* nonce2 fills remaining bytes */
+    n |= (nonce2 << (8 * nonce1_len));
+    return n;
+}
+
+static void run_stratum_mode(const char *host, const char *port,
+                             const char *user, const char *pass)
+{
+    init_opencl();
+    printf("[stratum] OpenCL ready\n");
+
+    stratum_ctx_t ctx;
+    stratum_init(&ctx, host, port, user, pass);
+    if (stratum_connect(&ctx) < 0) {
+        fprintf(stderr, "[stratum] Failed to connect\n");
+        cleanup_opencl();
+        return;
+    }
+
+    pthread_t recv_tid;
+    pthread_create(&recv_tid, NULL, stratum_recv_thread, &ctx);
+
+    uint32_t nonce2 = 0;
+    while (1) {
+        stratum_job_t job;
+        if (!stratum_get_job(&ctx, &job)) {
+            usleep(100000);
+            continue;
+        }
+
+        uint32_t nonce_val = build_nonce(ctx.nonce1, ctx.nonce1_len, nonce2);
+
+        stratum_cb_arg_t cb_arg;
+        cb_arg.ctx   = &ctx;
+        cb_arg.nonce2 = nonce2;
+        strncpy(cb_arg.job_id, job.job_id, sizeof(cb_arg.job_id) - 1);
+        cb_arg.job_id[sizeof(cb_arg.job_id) - 1] = '\0';
+        strncpy(cb_arg.ntime,  job.ntime,  sizeof(cb_arg.ntime) - 1);
+        cb_arg.ntime[sizeof(cb_arg.ntime) - 1] = '\0';
+
+        g_cancel_mining = 0;
+        int r = mine_batch(nonce_val, job.header, 0,
+                           stratum_solution_cb, &cb_arg);
+        if (r == -1) {
+            /* Interrupted by new job */
+            nonce2 = 0;
+            continue;
+        }
+        nonce2++;
+    }
+
+    pthread_join(recv_tid, NULL);
+    stratum_disconnect(&ctx);
+    cleanup_opencl();
+}
+
+int main(int argc, char *argv[]) {
+    uint32_t total_nonces = 100000;
+    char stratum_url[256] = {0};
+    char stratum_user[256] = {0};
+    char stratum_pass[256] = "x";
+
+    /* Parse args: [-p platform] [-o stratum+tcp://host:port] [-u user] [-P pass] [nonces] */
+    int i = 1;
+    while (i < argc) {
+        if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            g_platform_idx = atoi(argv[i + 1]); i += 2;
+        } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            strncpy(stratum_url, argv[i + 1], sizeof(stratum_url) - 1); i += 2;
+        } else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
+            strncpy(stratum_user, argv[i + 1], sizeof(stratum_user) - 1); i += 2;
+        } else if (strcmp(argv[i], "-P") == 0 && i + 1 < argc) {
+            strncpy(stratum_pass, argv[i + 1], sizeof(stratum_pass) - 1); i += 2;
+        } else {
+            total_nonces = (uint32_t)atoi(argv[i]); i++;
+        }
+    }
+
     printf("sa-tromp Equihash 192,7 GPU Miner\n");
     printf("NBUCKETS=%u  NSLOTS=%u  BUCKBITS=%u  RESTBITS=%u\n",
            NBUCKETS, NSLOTS, BUCKBITS, RESTBITS);
+    fflush(stdout);
+
+    /* Stratum pool mode */
+    if (stratum_url[0]) {
+        /* Parse stratum+tcp://host:port */
+        const char *url = stratum_url;
+        if (strncmp(url, "stratum+tcp://", 14) == 0) url += 14;
+        char host[256] = {0};
+        char port[16]  = "2222";
+        const char *colon = strrchr(url, ':');
+        if (colon) {
+            size_t hlen = (size_t)(colon - url);
+            if (hlen >= sizeof(host)) hlen = sizeof(host) - 1;
+            memcpy(host, url, hlen);
+            host[hlen] = '\0';
+            snprintf(port, sizeof(port), "%s", colon + 1);
+        } else {
+            snprintf(host, sizeof(host), "%s", url);
+        }
+        if (!stratum_user[0]) {
+            fprintf(stderr, "Usage: %s -o stratum+tcp://host:port -u user [-P pass]\n", argv[0]);
+            return 1;
+        }
+        printf("Pool: %s:%s  User: %s\n", host, port, stratum_user);
+        run_stratum_mode(host, port, stratum_user, stratum_pass);
+        return 0;
+    }
+
+    /* Solo mode */
     printf("Mining nonces: %u\n\n", total_nonces);
     fflush(stdout);
 
@@ -618,7 +789,7 @@ int main(int argc, char *argv[]) {
     int total_solutions = 0;
 
     for (uint32_t n = 0; n < total_nonces; n++) {
-        int solutions = mine_batch(n, header, 1);
+        int solutions = mine_batch(n, header, 1, NULL, NULL);
         total_solutions += solutions;
         if (solutions > 0)
             printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
