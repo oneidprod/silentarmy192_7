@@ -291,8 +291,16 @@ static int dispatch_line(stratum_ctx_t *ctx, const char *line)
         int nlen = (int)strlen(nonce1_hex);
         ctx->nonce1_len = nlen / 2;
         hex_decode(nonce1_hex, nlen, ctx->nonce1);
-        fprintf(stderr, "[stratum] Subscribed. nonce1=%s (%d bytes)\n",
-                nonce1_hex, ctx->nonce1_len);
+        /* Parse nonce2_size: the integer after nonce1 in result array */
+        while (*p && *p != ',' && *p != ']') p++;
+        if (*p == ',') {
+            p++;
+            while (*p == ' ') p++;
+            ctx->nonce2_size = (int)strtol(p, NULL, 10);
+        }
+        if (ctx->nonce2_size <= 0) ctx->nonce2_size = 4; /* default */
+        fprintf(stderr, "[stratum] Subscribed. nonce1=%s (%d bytes) nonce2_size=%d\n",
+                nonce1_hex, ctx->nonce1_len, ctx->nonce2_size);
         return 0;
     }
 
@@ -444,20 +452,15 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
     for (int i = 0; i < ctx->nonce1_len; i++)
         snprintf(nonce_hex + i * 2, 3, "%02x", ctx->nonce1[i]);
 
-    /* Write nonce2 (4 bytes, LE → hex) immediately after nonce1 */
-    uint8_t n2[4];
-    n2[0] = (nonce2_val >>  0) & 0xFF;
-    n2[1] = (nonce2_val >>  8) & 0xFF;
-    n2[2] = (nonce2_val >> 16) & 0xFF;
-    n2[3] = (nonce2_val >> 24) & 0xFF;
+    /* Write nonce2 (4 bytes, LE) immediately after nonce1 in the hex string */
     int off = ctx->nonce1_len * 2;
-    snprintf(nonce_hex + off,     3, "%02x", n2[0]);
-    snprintf(nonce_hex + off + 2, 3, "%02x", n2[1]);
-    snprintf(nonce_hex + off + 4, 3, "%02x", n2[2]);
-    snprintf(nonce_hex + off + 6, 3, "%02x", n2[3]);
+    snprintf(nonce_hex + off,     3, "%02x", (nonce2_val >>  0) & 0xFF);
+    snprintf(nonce_hex + off + 2, 3, "%02x", (nonce2_val >>  8) & 0xFF);
+    snprintf(nonce_hex + off + 4, 3, "%02x", (nonce2_val >> 16) & 0xFF);
+    snprintf(nonce_hex + off + 6, 3, "%02x", (nonce2_val >> 24) & 0xFF);
     /* remaining chars stay as '0' */
 
-    /* The nonce2 field submitted to pool: chars after nonce1 */
+    /* The nonce2 field submitted to pool: all 64 chars after nonce1 prefix */
     const char *nonce2_submit = nonce_hex + ctx->nonce1_len * 2;
 
     char msg[2048];

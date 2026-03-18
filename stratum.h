@@ -30,6 +30,7 @@ typedef struct {
     /* server-assigned nonce1 prefix (binary) */
     uint8_t  nonce1[8];
     int      nonce1_len;    /* bytes (typically 2-4) */
+    int      nonce2_size;   /* bytes the pool expects for nonce2 field */
 
     /* current job — protected by job_mutex */
     stratum_job_t  job;

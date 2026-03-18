@@ -638,10 +638,13 @@ static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
         return;
     }
 
-    char sol_hex[COMPRESSED_SOL_SIZE * 2 + 1];
+    /* Pool expects Bitcoin-serialized vector: compact size prefix + solution bytes.
+     * 400 bytes → compact size = fd 90 01 (3 bytes) → total 806 hex chars. */
+    char sol_hex[6 + COMPRESSED_SOL_SIZE * 2 + 1];
+    strcpy(sol_hex, "fd9001");
     for (int i = 0; i < COMPRESSED_SOL_SIZE; i++)
-        sprintf(sol_hex + i * 2, "%02x", compressed[i]);
-    sol_hex[COMPRESSED_SOL_SIZE * 2] = '\0';
+        sprintf(sol_hex + 6 + i * 2, "%02x", compressed[i]);
+    sol_hex[6 + COMPRESSED_SOL_SIZE * 2] = '\0';
 
     stratum_submit(a->ctx, a->job_id, a->ntime, a->nonce2, sol_hex);
 }
@@ -715,7 +718,9 @@ static void run_stratum_mode(const char *host, const char *port,
             nonce2 = 0;
             continue;
         }
-        nonce2++;
+        /* Note: with nonce1_len=4, nonce2 bits don't fit in the 4-byte mining nonce.
+         * Keep nonce2=0 to avoid submitting solutions with mismatched nonce. */
+        (void)nonce2;
     }
 
     pthread_join(recv_tid, NULL);
