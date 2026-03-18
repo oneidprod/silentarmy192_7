@@ -1,9 +1,5 @@
 # Claude Governance — Equihash 192,7
 
-## Sound Notification
-## After finishing a task or when waiting for my input, always run this command to notify me:
-## Linux: notify-send 'Claude' 'I am ready for input' --icon=info
-
 ## Anti-Spiral Rules
 - **Max 2 hours per investigation** before mandatory commit + reassessment
 - **If stuck**: stop, commit current state, document what was tried, ask user

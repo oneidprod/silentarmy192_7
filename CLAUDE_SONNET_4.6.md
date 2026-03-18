@@ -78,38 +78,92 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#33 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#35 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 32 State (2026-03-18) — IN PROGRESS
+### ⚠️ Session 34 State (2026-03-18) — IN PROGRESS
 
 #### Goal
-Fix 0 solutions. Session 31 left cascade degeneration diagnosis.
+Stratum pool mining integration.
 
-#### What was done (Session 32)
+#### What was done (Session 34)
 
-**Zero-XOR rejection added** (all GPU stages 1-6): after each XOR computation, skip pairs where all output bytes are zero. Result: cascade now healthy (Stage 5: 1360→4M collisions, Stage 6: 3355→519K). But RESTBITS=5 still found 0 valid solutions for nonce 0 — the 6 remaining candidates had duplicate leaf indices (first 64 = last 64 of each 128-leaf solution), which is a structural false solution from overflow.
+**compress_sol.c/.h** — C port of nheqminer's GetMinimalFromIndices + CompressArray. cBitLen=24, bytePad=0, 128 indices → 400 bytes / 800 hex chars. Verified against eq1927 nonce-0 reference solution (correct 800-char hex). Commit: `74d9953`.
 
-**RESTBITS=4 memory optimization**: previous attempt OOM-killed. Fix: instead of allocating 8 persistent gpu_attrs buffers (2GB), allocate 1 temp GPU attr buffer per stage, readback immediately to CPU, then free the GPU buffer. Peak GPU usage drops from 5.5GB to ~3.75GB.
+**stratum.c/.h** — Pure POSIX C Stratum client. subscribe/authorize/notify/submit/disconnect. Parses mining.notify → 108-byte binary header. Nonce assembly: nonce1+nonce2_le+zeros = 64 hex. Commit: `d63df24`.
 
-**RESTBITS=4 test**: 2 valid solutions for nonce 0, `test_verifier PASSED`. Runtime 3.06s/nonce. Zero Stage 0 overflow.
+**sa-tromp.c** — mine_batch callback, g_cancel_mining, run_stratum_mode(), main() CLI. Commit: `4e9c6fe`.
+- `mine_batch()` now takes `solution_cb/ud`; NULL = solo (print), non-NULL = pool callback
+- `g_cancel_mining` checked after each `clFinish()` in all dispatch loops; returns -1 if set
+- `run_stratum_mode()` + `stratum_recv_thread()` + `build_nonce()` all added
+- CLI: `./sa-tromp [-p platform] [-o stratum+tcp://host:port] [-u user] [-P pass] [nonces]`
+- Solo mode test: `./sa-tromp 5` → 11 verified solutions ✅ (unchanged behavior)
 
-**Commits this session**: b3a2b91 (zero-XOR), 448efd1 (RESTBITS=4 + mem fix)
+#### Current state (commit 4e9c6fe)
+- Stratum code written and compiles clean
+- Solo mode: ✅ still works (11 solutions/5 nonces)
+- Pool mode: ✅ code complete — NOT yet tested against real/fake pool
+- **NEXT**: Test stratum with netcat fake pool, then real Zero pool
 
-#### Current state (commit 448efd1)
+#### Next session plan (Session 35)
+
+**Step 1: Netcat fake pool test**
+
+Terminal 1:
+```bash
+nc -l -p 12345
+```
+Terminal 2:
+```bash
+./sa-tromp -p 0 -o stratum+tcp://127.0.0.1:12345 -u test.worker -P x
+```
+In terminal 1, paste these JSON lines (one per Enter):
+```json
+{"id":1,"result":[[["mining.set_target","1"],["mining.notify","2"]],"0000",4],"error":null}
+{"id":2,"result":true,"error":null}
+{"id":0,"method":"mining.set_target","params":["0020000000000000000000000000000000000000000000000000000000000000"]}
+{"id":0,"method":"mining.notify","params":["job1","04000000","0000000000000000000000000000000000000000000000000000000000000000","0000000000000000000000000000000000000000000000000000000000000000","0000000000000000000000000000000000000000000000000000000000000000","7c1aa769","1f00ffff",true]}
+```
+Expected: sa-tromp prints "Subscribed", "Authorized", "New job: job1", then starts mining.
+When solution found: verify JSON submit has 800-char solution field.
+
+**Step 2: Real pool test**
+Find a Zero (ZER) pool and connect. Confirm accepted share.
+
+### ⚠️ Session 33 State (2026-03-18) — SUPERSEDED BY SESSION 34
+
+#### Goal
+Fix multi-nonce OOM crash, then begin Stratum integration.
+
+#### What was done (Session 33)
+
+**Multi-nonce OOM fix**: `./sa-tromp 5` was OOM-killed entering nonce 1. Root cause: Beignet `clReleaseMemObject` marks buffers as freed but doesn't return shared RAM to the allocator pool — re-allocating ~3.75 GB per nonce immediately exhausted memory. Fix: promoted `buf_tree0`, `buf_tree1`, `buf_t0_cnt`, and `buf_counts[7]` to persistent globals — allocated once in `init_opencl()`, zeroed with `clEnqueueFillBuffer` at the start of each `mine_batch()` call, released once in `cleanup_opencl()`.
+
+**Result**: `./sa-tromp 5` — all 5 nonces complete, 11 verified solutions total (2+3+2+3+1), ~2.3s/nonce, no OOM kill.
+
+**Commits this session**: 9465d68 (persistent GPU buffers)
+
+#### Current state (commit 9465d68)
 - RESTBITS=4, NSLOTS=64 in both files
-- 2 verified solutions per nonce (matches eq1927 finding 4 — we get subset)
-- test_verifier: PASSED ✅
-- Multi-nonce runs: cleanup_opencl() hangs on Beignet between nonces (disabled)
-- Runtime: ~3.06s/nonce
+- Multi-nonce mining: ✅ WORKING
+- Verified solutions per nonce: nonce 0=2, 1=3, 2=2, 3=3, 4=1
+- test_verifier: ✅ PASSED (from session 32)
+- Runtime: ~2.3s/nonce (persistent buffers avoid re-alloc overhead)
 
-#### Next session plan (Session 33)
+#### Next session plan (Session 34)
 
-**Step 1: Fix multi-nonce mining** — the cleanup_opencl()+init_opencl() between nonces hangs. Two options:
-- (a) Don't reinit between nonces — just re-run mine_batch with same OpenCL context. This is the simplest fix. The Beignet driver is stable within one run; the hang was on `clReleaseContext`.
-- (b) Only reinit if an error occurs (defensive). Add error check after each nonce, reinit only on failure.
-- Recommended: try option (a) — remove the commented-out reinit entirely. Test with `./sa-tromp 5`.
+**Step 1: Stratum integration** — full research already done, no re-research needed. See [memory/project_stratum_plan.md](/.claude/projects/-home-mine-silentarmy192-7/memory/project_stratum_plan.md).
 
-**Step 2: Stratum integration** — see [memory/project_stratum_plan.md](/.claude/projects/-home-mine-silentarmy192-7/memory/project_stratum_plan.md). The nonce fix (Phase 1) is done (nonce embedded at bytes 128-131 in headernonce). Phase 2 is pool mining Stratum connection.
+Implementation order:
+1. `compress_sol.c/.h` — port `GetMinimalFromIndices` + `CompressArray` from `~/zero-nheqminer/nheqminer/libstratum/ZcashStratum.cpp` lines 34-98. cBitLen=24, bytePad=0, output=400 bytes.
+2. `stratum.c/.h` — pure POSIX C TCP Stratum client (no Boost, no C++)
+3. Changes to `sa-tromp.c`:
+   - Add `volatile int g_cancel_mining` (set by recv thread on clean_jobs)
+   - Check after each `clFinish()` in dispatch loop; return -1 if cancelled
+   - Add CLI: `./sa-tromp -o stratum+tcp://host:port -u user.worker -p pass`
+   - `run_stratum_mode()`: `init_opencl()` once, pthread recv thread, mine loop
+4. Makefile: `sa-tromp: sa-tromp.o stratum.o compress_sol.o blake.o sha256.o`
+
+**Verification**: connect to Zero testnet pool, confirm accepted shares.
 
 ### ⚠️ Session 31 State (2026-03-17) — SUPERSEDED BY SESSION 32
 
