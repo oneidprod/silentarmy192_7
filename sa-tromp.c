@@ -660,6 +660,9 @@ static void *stratum_recv_thread(void *arg)
             fprintf(stderr, "[stratum] Disconnected\n");
             break;
         }
+        /* If a clean new job arrived, cancel current mining batch */
+        if (ctx->cancel)
+            g_cancel_mining = 1;
     }
     return NULL;
 }
@@ -682,7 +685,7 @@ static void run_stratum_mode(const char *host, const char *port,
                              const char *user, const char *pass)
 {
     init_opencl();
-    printf("[stratum] OpenCL ready\n");
+    printf("[stratum] OpenCL ready\n"); fflush(stdout);
 
     stratum_ctx_t ctx;
     stratum_init(&ctx, host, port, user, pass);
@@ -714,7 +717,9 @@ static void run_stratum_mode(const char *host, const char *port,
         cb_arg.ntime[sizeof(cb_arg.ntime) - 1] = '\0';
 
         g_cancel_mining = 0;
-        int r = mine_batch(nonce_val, job.header, 0,
+        ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */
+        fprintf(stderr, "[stratum] Mining nonce=%u (0x%08x)\n", nonce_val, nonce_val);
+        int r = mine_batch(nonce_val, job.header, 1,
                            stratum_solution_cb, &cb_arg);
         if (r == -1) {
             /* Interrupted by new job */
