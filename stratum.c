@@ -419,8 +419,7 @@ int stratum_connect(stratum_ctx_t *ctx)
     char msg[1024];
     snprintf(msg, sizeof(msg),
              "{\"id\":1,\"method\":\"mining.subscribe\","
-             "\"params\":[\"sa-tromp/1.0\",null,\"%s\",\"%s\"]}\n",
-             ctx->host, ctx->port);
+             "\"params\":[\"sa-tromp/1.0\",null]}\n");
     if (sock_send(fd, msg) < 0) { close(fd); return -1; }
 
     /* Wait for subscribe response */
