@@ -80,31 +80,41 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 **NEXT SESSION** — start with: "Session#39 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 38 State (2026-03-18) — IN PROGRESS
+### ⚠️ Session 38 State (2026-03-18) — COMPLETE
 
 #### Goal
-Apply Opus root-cause fix (nonce at byte 108, pool-compatible) and test pool.
+Apply Opus root-cause fix (nonce at byte 108, pool-compatible), fix Ctrl-C, fix duplicate shares, pool test.
 
 #### What was done (Session 38)
 
 **Commits this session:**
-- `8b6fa8a`: Committed leftover session 37 stratum fixes (subscribe parser, nonce2_size, clFinish, -n flag)
+- `8b6fa8a`: Committed leftover session 37 stratum fixes
 - `895024f`: Nonce placement fix — byte 108 (pool-compatible)
+- `b30b6c4`: Ctrl-C fix — SO_RCVTIMEO 1s + EAGAIN handling in recv_line
+- `8ab84c6`: nonce2 iteration fix — write nonce2 to headernonce[112..115], increment each batch
 
-**Nonce placement fix applied:**
-- `sa-tromp.c`: `headernonce[27]` (was `[32]`) — nonce at bytes 108-111
-- `sa-tromp.c`: `eh_genhash message[0] = 0` (nonce in block1 state, not block2)
-- `input.cl`: `word0 = 0` (same rationale)
-- Solo test: `./sa-tromp -p 0 1` → 2 valid solutions, VERIFIED ✓
+**Pool test results (socat capture, zeropool.io):**
+- "invalid solution" → GONE ✓ (nonce placement fix worked)
+- "duplicate share" → GONE ✓ (nonce2 iteration fix worked)
+- Ctrl-C → FIXED ✓
+- Remaining: **"low difficulty share"** — solutions are valid Equihash but hash doesn't meet pool target
+  - Pool sends `mining.set_target` (e.g. `00a000...`) — we currently ignore it and submit everything
+  - We need sha256d(header+solution) < target check before submitting
 
 **Current state:**
-- Solo mode: ✓ nonce at byte 108, 2 valid solutions verified
-- Pool test: NOT YET DONE
+- Solo mode: ✓ 2 valid solutions verified
+- Stratum connect/subscribe/authorize/job: ✓
+- Ctrl-C: ✓ fixed
+- Duplicate shares: ✓ fixed
+- Share validity: solutions are valid Equihash ✓ but don't meet pool difficulty
 
 #### Next session plan (Session 39)
-1. Pool test: `./sa-tromp -p 0 -o stratum+tcp://zeropool.io:1241 -u <addr>.tst -P x`
-2. If accepted → success! Commit final state.
-3. If still rejected → use socat to capture traffic, inspect submit fields.
+1. Implement target check: parse `mining.set_target`, store in ctx; before submitting, compute sha256d(140-byte-header + compressed-solution) and compare to target
+2. Only submit if hash ≤ target
+3. Pool test — should see accepted shares (if our GPU is fast enough to find a share at pool difficulty)
+4. If difficulty too high for our GPU: check if pool supports vardiff/lower difficulty
+
+**Key fact:** Pool target `00a000...` = difficulty ~0.0016. Our solutions hash to ~0.0001-0.001 difficulty range. Some solutions may meet target — we just need to check before submitting instead of spamming everything.
 
 ### ⚠️ Session 37 State (2026-03-18) — NOTE: THIS SESSION NEVER EXECUTED AS SONNET CODE SESSION
 
