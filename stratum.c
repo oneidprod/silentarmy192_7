@@ -10,6 +10,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include "stratum.h"
 
+extern volatile int g_shutdown;  /* set by SIGINT handler in sa-tromp.c */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +20,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <endian.h>
 
@@ -146,7 +149,13 @@ static int recv_line(stratum_ctx_t *ctx, char *line_buf, int maxlen)
         int space = STRATUM_RECV_BUF - ctx->recv_len - 1;
         if (space <= 0) return -1; /* buffer full without newline */
         ssize_t n = read(ctx->sockfd, ctx->recv_buf + ctx->recv_len, (size_t)space);
-        if (n <= 0) return -1;
+        if (n <= 0) {
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                if (g_shutdown) return -1;
+                continue;  /* SO_RCVTIMEO fired — loop, check g_shutdown, retry */
+            }
+            return -1;  /* real error or EOF */
+        }
         ctx->recv_len += (int)n;
     }
 }
@@ -385,6 +394,10 @@ int stratum_connect(stratum_ctx_t *ctx)
     ctx->sockfd    = fd;
     ctx->connected = 1;
     ctx->recv_len  = 0;
+
+    /* Set 1-second receive timeout so recv_thread can check g_shutdown on Ctrl-C */
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     fprintf(stderr, "[stratum] Connected to %s:%s\n", ctx->host, ctx->port);
 

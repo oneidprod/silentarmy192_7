@@ -80,7 +80,7 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce,
 
 static int verbose = 0;
 volatile int g_cancel_mining = 0;
-static volatile int g_shutdown = 0;
+volatile int g_shutdown = 0;
 static void sigint_handler(int s) { (void)s; g_shutdown = 1; g_cancel_mining = 1; }
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
