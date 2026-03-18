@@ -448,16 +448,22 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
     memset(nonce_hex, '0', 64);
     nonce_hex[64] = '\0';
 
-    /* Write nonce1 */
-    for (int i = 0; i < ctx->nonce1_len; i++)
-        snprintf(nonce_hex + i * 2, 3, "%02x", ctx->nonce1[i]);
+    /* Write nonce1 — use tmp to avoid snprintf null-terminator clobbering */
+    for (int i = 0; i < ctx->nonce1_len; i++) {
+        char b[3];
+        snprintf(b, 3, "%02x", ctx->nonce1[i]);
+        memcpy(nonce_hex + i * 2, b, 2);
+    }
 
-    /* Write nonce2 (4 bytes, LE) immediately after nonce1 in the hex string */
+    /* Write nonce2 (4 bytes, LE) immediately after nonce1 in the hex string.
+     * Use a tmp buf then memcpy to avoid snprintf null-terminator clobbering
+     * the '0' padding chars that follow. */
     int off = ctx->nonce1_len * 2;
-    snprintf(nonce_hex + off,     3, "%02x", (nonce2_val >>  0) & 0xFF);
-    snprintf(nonce_hex + off + 2, 3, "%02x", (nonce2_val >>  8) & 0xFF);
-    snprintf(nonce_hex + off + 4, 3, "%02x", (nonce2_val >> 16) & 0xFF);
-    snprintf(nonce_hex + off + 6, 3, "%02x", (nonce2_val >> 24) & 0xFF);
+    char tmp[9];
+    snprintf(tmp, sizeof(tmp), "%02x%02x%02x%02x",
+             (nonce2_val >>  0) & 0xFF, (nonce2_val >>  8) & 0xFF,
+             (nonce2_val >> 16) & 0xFF, (nonce2_val >> 24) & 0xFF);
+    memcpy(nonce_hex + off, tmp, 8);
     /* remaining chars stay as '0' */
 
     /* The nonce2 field submitted to pool: all 64 chars after nonce1 prefix */
