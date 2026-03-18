@@ -59,17 +59,18 @@ typedef uint32_t uint;
 
 static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce, uint8_t *hash)
 {
-    /* Tromp/eq1927 standard block 2 layout (matches 140-byte headernonce convention):
-     *   m[0] low32 = nonce (headernonce bytes 128-131)
-     *   m[1] high32 = g (blake-call index)
-     * ctx = h after block1 (128 zero bytes, nonce NOT in block1). bytes=128. */
+    (void)nonce;  /* nonce is baked into ctx (blake state after block1); not in block2 */
+    /* Pool-compatible block 2 layout:
+     *   m[0] = 0 (nonce absorbed in block1 state h — nonce at headernonce bytes 108-127)
+     *   m[1] high32 = g (blake-call index); low32 from buffered nonce bytes 128-131 = 0
+     * ctx = h after block1 (bytes 0-127, includes nonce bytes 108-127). bytes=128. */
     blake2b_state_t st = *ctx;
     const uint32_t hashes_per_blake = 512 / PARAM_N;   /* = 2 */
     const uint32_t hash_bytes = PARAM_N / 8;            /* = 24 */
     uint8_t full_hash[ZCASH_HASH_LEN];
     uint64_t message[16] = {0};
     uint32_t g = idx / hashes_per_blake;
-    message[0] = (uint64_t)nonce;          /* m[0] low32 = nonce */
+    message[0] = 0;                        /* m[0] = 0 (nonce in block1, bytes 128-131 = 0) */
     message[1] = (uint64_t)g << 32;        /* m[1] high32 = blake-call index g */
     st.bytes = 128;                        /* initial state was built after block1 (128 bytes) */
     zcash_blake2b_update(&st, (const uint8_t *)message, 2 * sizeof(uint64_t), 1);
@@ -332,13 +333,14 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress,
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
 
     /* ── Phase 1: GPU hash generation ────────────────────────────────────── */
-    /* Tromp/eq1927 convention: 140-byte headernonce, nonce at bytes 128-131.
+    /* Pool-compatible convention: 140-byte headernonce, nonce at bytes 108-139.
      * blake2b_update(headernonce, 140) compresses bytes 0-127 as block1 (t=128)
-     * and buffers bytes 128-139 (nonce+zeros). GPU block2 = {nonce, 0(×8), g(×4)},
-     * making total 16 bytes; t=144. GPU: word0=nonce, word1=g<<32. */
+     * — nonce bytes 108-127 are IN block1 (state is nonce-dependent).
+     * Buffered bytes 128-139 (last 12 of nonce) + per-index g = 16-byte block2, t=144.
+     * GPU block2 = {0(×12), g(×4)}: word0=0, word1=g<<32 (nonce absorbed in state h). */
     uint8_t headernonce[140] = {0};
     memcpy(headernonce, header, 108);  /* header is ≤108 bytes; rest zero */
-    ((uint32_t *)headernonce)[32] = htole32(nonce_idx);  /* nonce at bytes 128-131 */
+    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);  /* nonce at bytes 108-111 */
 
     blake2b_param P = {0};
     P.digest_length = ZCASH_HASH_LEN;

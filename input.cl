@@ -1497,12 +1497,11 @@ void kernel_round0_gen(
     uint nonce)                        /* mining nonce (m[0] low 32 bits of block2) */
 {
     uint i = get_global_id(0);
-    /* Tromp/eq1927 standard block 2 layout (matches 140-byte headernonce convention):
-     *   bytes 0-3:   nonce (from headernonce bytes 128-131) → m[0] low 32 bits
-     *   bytes 4-11:  zeros
+    /* Pool-compatible block 2 layout:
+     *   bytes 0-11:  nonce tail bytes 128-139 = 0 (nonce is 4 bytes at position 108)
      *   bytes 12-15: htole32(i/2) = g → m[1] high 32 bits
-     * block1 = 128 zero bytes (no nonce); block2 = 16 bytes; t=144 total. */
-    ulong word0 = (ulong)nonce;        /* m[0] low32 = nonce */
+     * block1 = bytes 0-127 (includes nonce at bytes 108-111); block2 = 16 bytes; t=144. */
+    ulong word0 = 0;                   /* m[0] = 0 (nonce absorbed in block1 state) */
     ulong word1 = (ulong)i << 32;      /* m[1] high32 = blake-call index g */
 
     ulong v[16];
