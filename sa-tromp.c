@@ -159,6 +159,13 @@ cl_kernel kernels[7];
 cl_kernel kernel_round0_gen;
 cl_kernel kernel_extract_attrs_k;
 
+/* Persistent GPU buffers — allocated once in init_opencl, reused every nonce.
+ * Avoids Beignet OOM: clReleaseMemObject doesn't actually free shared RAM. */
+static cl_mem g_buf_tree0   = NULL;
+static cl_mem g_buf_tree1   = NULL;
+static cl_mem g_buf_t0_cnt  = NULL;
+static cl_mem g_buf_counts[7];
+
 void check_error(cl_int err, const char *operation) {
     if (err != CL_SUCCESS) {
         fprintf(stderr, "Error during %s: %d\n", operation, err);
@@ -233,9 +240,32 @@ void init_opencl(void) {
     check_error(err, "kernel_round0_gen");
     kernel_extract_attrs_k = clCreateKernel(program, "kernel_extract_attrs", &err);
     check_error(err, "kernel_extract_attrs");
+
+    /* Allocate persistent GPU buffers — reused across all nonces */
+    {
+        const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
+        g_buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                     tree_size * 28, NULL, &err);
+        check_error(err, "g_buf_tree0");
+        g_buf_tree1 = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                     tree_size * 28, NULL, &err);
+        check_error(err, "g_buf_tree1");
+        g_buf_t0_cnt = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                      NBUCKETS * sizeof(uint32_t), NULL, &err);
+        check_error(err, "g_buf_t0_cnt");
+        for (int i = 0; i < 7; i++) {
+            g_buf_counts[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                             NBUCKETS * sizeof(uint32_t), NULL, &err);
+            check_error(err, "g_buf_counts");
+        }
+    }
 }
 
 void cleanup_opencl(void) {
+    clReleaseMemObject(g_buf_tree0);
+    clReleaseMemObject(g_buf_tree1);
+    clReleaseMemObject(g_buf_t0_cnt);
+    for (int i = 0; i < 7; i++) clReleaseMemObject(g_buf_counts[i]);
     for (int i = 0; i < 7; i++) clReleaseKernel(kernels[i]);
     clReleaseKernel(kernel_round0_gen);
     clReleaseKernel(kernel_extract_attrs_k);
@@ -324,20 +354,13 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                                          8 * sizeof(uint64_t), blake_gen.h, &err);
     check_error(err, "buf_blake_st");
 
-    /* tree0: NBUCKETS * NSLOTS * sizeof(stage0_slot_t) = 1M * 32 * 28 = 860 MB */
-    cl_mem buf_tree0 = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                      tree_size * sizeof(stage0_slot_t), NULL, &err);
-    check_error(err, "buf_tree0");
-
-    cl_mem buf_t0_cnt = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                       NBUCKETS * sizeof(uint32_t), NULL, &err);
-    check_error(err, "buf_t0_cnt");
-    {
-        uint32_t *z = calloc(NBUCKETS, sizeof(uint32_t));
-        clEnqueueWriteBuffer(queue, buf_t0_cnt, CL_TRUE, 0,
-                             NBUCKETS * sizeof(uint32_t), z, 0, NULL, NULL);
-        free(z);
-    }
+    /* Use persistent global buffers — zero them for this nonce */
+    cl_mem buf_tree0 = g_buf_tree0;
+    cl_mem buf_t0_cnt = g_buf_t0_cnt;
+    { uint32_t zero = 0;
+      clEnqueueFillBuffer(queue, buf_t0_cnt, &zero, sizeof(zero),
+                          0, NBUCKETS * sizeof(uint32_t), 0, NULL, NULL);
+      clFinish(queue); }
 
     clSetKernelArg(kernel_round0_gen, 0, sizeof(cl_mem), &buf_blake_st);
     clSetKernelArg(kernel_round0_gen, 1, sizeof(cl_mem), &buf_tree0);
@@ -395,24 +418,17 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
 
     /* ── Phase 2: 7-stage collision cascade ─────────────────────────────── */
 
-    /* Allocate all 7 count buffers (4 MB each = 28 MB total) */
-    cl_mem buf_counts[7];
-    {
-        uint32_t *z = calloc(NBUCKETS, sizeof(uint32_t));
-        for (int i = 0; i < 7; i++) {
-            buf_counts[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                           NBUCKETS * sizeof(uint32_t), NULL, &err);
-            check_error(err, "buf_counts");
-            clEnqueueWriteBuffer(queue, buf_counts[i], CL_TRUE, 0,
-                                 NBUCKETS * sizeof(uint32_t), z, 0, NULL, NULL);
-        }
-        free(z);
-    }
+    /* Use persistent global count buffers — zero them for this nonce */
+    cl_mem *buf_counts = g_buf_counts;
+    { uint32_t zero = 0;
+      for (int i = 0; i < 7; i++) {
+          clEnqueueFillBuffer(queue, buf_counts[i], &zero, sizeof(zero),
+                              0, NBUCKETS * sizeof(uint32_t), 0, NULL, NULL);
+      }
+      clFinish(queue); }
 
-    const size_t STAGE1_GPU_BYTES = 28; /* uint32_t attr(4) + hash[21] + pad[3] */
-    cl_mem buf_tree1 = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                      tree_size * STAGE1_GPU_BYTES, NULL, &err);
-    check_error(err, "buf_tree1");
+    /* Use persistent tree1 buffer */
+    cl_mem buf_tree1 = g_buf_tree1;
 
     clSetKernelArg(kernels[0], 0, sizeof(cl_mem), &buf_tree0);
     clSetKernelArg(kernels[0], 1, sizeof(cl_mem), &buf_t0_cnt);
@@ -448,8 +464,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
           clEnqueueReadBuffer(queue, tmp_attr, CL_TRUE, 0,
                               tree_size * sizeof(uint32_t), cpu_attrs[1], 0, NULL, NULL);
           clReleaseMemObject(tmp_attr); }
-        /* tree0 reused as ping-pong buffer — do NOT release here */
-        clReleaseMemObject(buf_t0_cnt);
+        /* tree0 and buf_t0_cnt are persistent globals — do NOT release here */
 
         uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
         clEnqueueReadBuffer(queue, buf_counts[0], CL_TRUE, 0,
@@ -562,18 +577,13 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             if (show_progress)
                 printf("  Extraction: %u candidates → %d extracted (distinct) → %d verified\n",
                        nsol, n_extracted, n_verified);
-            clReleaseMemObject(buf_tree0);
-            clReleaseMemObject(buf_tree1);
-            for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
+            /* buf_tree0/tree1/counts are persistent globals — do NOT release here */
             for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
             return valid_solutions;
         }
     }
 
-    /* Release the two shared tree buffers */
-    clReleaseMemObject(buf_tree0);
-    clReleaseMemObject(buf_tree1);
-    for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
+    /* buf_tree0/tree1/counts are persistent globals — do NOT release here */
     for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
     return valid_solutions;
 }

@@ -78,9 +78,96 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#31 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#33 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 30 State (2026-03-17) — IN PROGRESS
+### ⚠️ Session 32 State (2026-03-18) — IN PROGRESS
+
+#### Goal
+Fix 0 solutions. Session 31 left cascade degeneration diagnosis.
+
+#### What was done (Session 32)
+
+**Zero-XOR rejection added** (all GPU stages 1-6): after each XOR computation, skip pairs where all output bytes are zero. Result: cascade now healthy (Stage 5: 1360→4M collisions, Stage 6: 3355→519K). But RESTBITS=5 still found 0 valid solutions for nonce 0 — the 6 remaining candidates had duplicate leaf indices (first 64 = last 64 of each 128-leaf solution), which is a structural false solution from overflow.
+
+**RESTBITS=4 memory optimization**: previous attempt OOM-killed. Fix: instead of allocating 8 persistent gpu_attrs buffers (2GB), allocate 1 temp GPU attr buffer per stage, readback immediately to CPU, then free the GPU buffer. Peak GPU usage drops from 5.5GB to ~3.75GB.
+
+**RESTBITS=4 test**: 2 valid solutions for nonce 0, `test_verifier PASSED`. Runtime 3.06s/nonce. Zero Stage 0 overflow.
+
+**Commits this session**: b3a2b91 (zero-XOR), 448efd1 (RESTBITS=4 + mem fix)
+
+#### Current state (commit 448efd1)
+- RESTBITS=4, NSLOTS=64 in both files
+- 2 verified solutions per nonce (matches eq1927 finding 4 — we get subset)
+- test_verifier: PASSED ✅
+- Multi-nonce runs: cleanup_opencl() hangs on Beignet between nonces (disabled)
+- Runtime: ~3.06s/nonce
+
+#### Next session plan (Session 33)
+
+**Step 1: Fix multi-nonce mining** — the cleanup_opencl()+init_opencl() between nonces hangs. Two options:
+- (a) Don't reinit between nonces — just re-run mine_batch with same OpenCL context. This is the simplest fix. The Beignet driver is stable within one run; the hang was on `clReleaseContext`.
+- (b) Only reinit if an error occurs (defensive). Add error check after each nonce, reinit only on failure.
+- Recommended: try option (a) — remove the commented-out reinit entirely. Test with `./sa-tromp 5`.
+
+**Step 2: Stratum integration** — see [memory/project_stratum_plan.md](/.claude/projects/-home-mine-silentarmy192-7/memory/project_stratum_plan.md). The nonce fix (Phase 1) is done (nonce embedded at bytes 128-131 in headernonce). Phase 2 is pool mining Stratum connection.
+
+### ⚠️ Session 31 State (2026-03-17) — SUPERSEDED BY SESSION 32
+
+#### Goal
+Fix 0 solutions extracted. Platform selection added. Deep-dive into cascade degeneration.
+
+#### What was done (Session 31)
+
+**Platform selection added** (`-p <idx>` arg, prints platform name at startup). Platform 0 = "Intel Gen OCL Driver".
+
+**NSLOTS=96 impossible**: With RESTBITS=5, BUCKBITS=19. Attr encoding = `(bucket<<12)|(i<<6)|j`. 6-bit slot fields → max NSLOTS=63. To support NSLOTS≥64 would need 7-bit slots → `19+7+7=33 bits > uint32`. NSLOTS=64 is the maximum for RESTBITS=5.
+
+**RESTBITS=4 OOMs**: NBUCKETS=1M → ~5.5GB GPU buffers → exceeds 5.8GB shared RAM. OOM confirmed.
+
+**Current config: RESTBITS=5, NSLOTS=64, NBUCKETS=512K** (~2.8GB — fits). But 0 solutions.
+
+**Root cause found — cascade degeneration starting at Stage 4**:
+
+Diagnostic trace (RESTBITS=5, NSLOTS=64, nonce 0):
+```
+Stage 0: avg=64.0/bk max=101 overflow=244846
+Stage 1: 30M collisions, bucket distribution normal
+Stage 2: 26M collisions, bk0=45 bk1=44 bk2=47 — NORMAL
+Stage 3: 20M collisions, bk0=47 bk1=40 bk2=27 — NORMAL
+Stage 4: 12M collisions, bk0=86 bk1=20 bk2=23
+         Stage 4 bucket 0 ALL-ZERO hashes: h0=000000 h3=000000 h6=000000 ← DEGENERATE
+Stage 5: bk0=1360 bk1=7 bk2=11 — ALL output in bk0
+Stage 6: bk0=3355 — 3291 dropped by NSLOTS clamping
+Stage 7: 3348 candidates, all fail distinct check
+```
+
+**Why zero hashes in Stage 4 bk0**: Stage 3 bucket 0 slot3 has attr=0x081cf61a, h0=0, h3=0, h6=0 (completely zero XOR). This means two Stage 2 slots (bk=33231, i=6, j=26) had IDENTICAL hash bytes → XOR=0 → false collision. Stage 4 pairs slot3 (zero hash) with other Stage 3 bucket 0 slots that also have zero sub-bytes → propagates zeros through cascade.
+
+**Why duplicate Stage 2 hashes exist**: Unknown — need to trace Stage 1 or Stage 2 to find where identical outputs appear. Stage 2 bk0 data looks normal (varied), but there are evidently many identical slots scattered across Stage 2 buckets.
+
+**Key insight**: With avg=64/bucket at Stage 0 (RESTBITS=5, NSLOTS=64 exactly at capacity), overflow is 244K. Dropped hashes may be creating conditions for spurious coincidences at Stage 2-3. Alternatively, this is a pre-existing bug in Stages 1-3 that RESTBITS=4 masked because buckets were less full.
+
+#### Current state (commit b6d32c3)
+- RESTBITS=5, NSLOTS=64 in both files
+- Platform selection: `-p <idx>` works, Intel Gen OCL Driver confirmed
+- No debug code in codebase
+- 0 valid solutions with RESTBITS=5
+
+#### Next session plan (Session 32)
+
+**Step 1: Add `--compare-cpu` mode** — run a few Stage 1/2 collision pairs through the CPU reference and compare with GPU output. Find the first divergence. Alternatively, use `cpu_tromp_baseline.c` to produce Stage 1 output and compare bucket distributions.
+
+**Step 2: Try RESTBITS=4 with reduced tree buffers** — instead of two full tree buffers, try a streaming approach where we only keep one tree buffer at a time and free+reallocate between stages. This reduces peak from 5.5GB to ~3.5GB. Math:
+- Single tree buffer: 1M × 64 × 28 = 1.75GB
+- gpu_attrs[8]: 8 × (1M × 64 × 4) = 2.0GB
+- Total: ~3.75GB → fits!
+- Trade-off: must copy or not ping-pong (allocate new buf each stage, free old)
+
+**Step 3: If Step 2 works with RESTBITS=4** — verify with test_verifier.
+
+**Alternative if cascade is truly broken for RESTBITS=5**: The zero-hash duplicates may be a fundamental artifact of RESTBITS=5 with NSLOTS overflow. The fix would be either (a) RESTBITS=4 (if memory works), or (b) deduplicate stage outputs (reject XOR=0 pairs). Deduplication is simple: after each XOR, check if xh is all-zero and skip the pair.
+
+### ⚠️ Session 30 State (2026-03-17) — SUPERSEDED BY SESSION 31
 
 #### Goal
 Fix 0 solutions extracted. Diagnose and fix GPU-side attr extraction.
