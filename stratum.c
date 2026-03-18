@@ -270,11 +270,12 @@ static int dispatch_line(stratum_ctx_t *ctx, const char *line)
         /* nonce1 is nested: [[...], "nonce1_hex", nonce2_size] */
         /* Find nonce1 by looking for the second top-level string after result */
         const char *p = result + strlen("\"result\":");
-        /* skip first array element (subscription array) */
+        /* skip first array element (subscription array [[...,...],]) */
+        /* result = [[subs_array], "nonce1", nonce2_size] — skip outer [ then subs [ */
         int depth = 0;
         while (*p) {
             if (*p == '[') depth++;
-            else if (*p == ']') { depth--; if (depth == 0) { p++; break; } }
+            else if (*p == ']') { depth--; if (depth == 1) { p++; break; } }
             p++;
         }
         /* now at nonce1 string */
