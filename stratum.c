@@ -264,41 +264,58 @@ static int dispatch_line(stratum_ctx_t *ctx, const char *line)
 
     /* Response to subscribe (id=1) */
     if (msg_id == 1) {
-        /* Extract nonce1: result[1] in the params array */
+        /* Extract nonce1 from result array. Two formats:
+         *   [[subs,...], "nonce1_hex", nonce2_size]  — standard
+         *   [null, "nonce1_hex"]                     — simplified (zeropool.io style)
+         * Strategy: skip the first element (array or null/other), then parse nonce1 string. */
         const char *result = strstr(line, "\"result\":");
         if (!result) { fprintf(stderr, "[stratum] subscribe: no result\n"); return 0; }
-        /* nonce1 is nested: [[...], "nonce1_hex", nonce2_size] */
-        /* Find nonce1 by looking for the second top-level string after result */
         const char *p = result + strlen("\"result\":");
-        /* skip first array element (subscription array [[...,...],]) */
-        /* result = [[subs_array], "nonce1", nonce2_size] — skip outer [ then subs [ */
-        int depth = 0;
-        while (*p) {
-            if (*p == '[') depth++;
-            else if (*p == ']') { depth--; if (depth == 1) { p++; break; } }
+        /* skip outer '[' */
+        while (*p && *p != '[') p++;
+        if (*p == '[') p++;
+        /* skip first element: if it starts with '[', skip to matching ']', else skip to ',' */
+        while (*p == ' ') p++;
+        if (*p == '[') {
+            /* subs array — skip to matching ']' */
+            int depth = 1;
             p++;
+            while (*p && depth > 0) {
+                if (*p == '[') depth++;
+                else if (*p == ']') depth--;
+                p++;
+            }
+        } else {
+            /* null or other scalar — skip to next ',' at depth 0 */
+            int depth = 0;
+            while (*p && !(*p == ',' && depth == 0)) {
+                if (*p == '[' || *p == '{') depth++;
+                else if (*p == ']' || *p == '}') depth--;
+                p++;
+            }
         }
-        /* now at nonce1 string */
-        char nonce1_hex[32] = {0};
-        /* skip comma and whitespace */
+        /* skip ',' and whitespace to reach nonce1 string */
         while (*p == ',' || *p == ' ') p++;
+        char nonce1_hex[32] = {0};
         if (*p == '"') {
             p++;
             int i = 0;
             while (*p && *p != '"' && i < 31) nonce1_hex[i++] = *p++;
             nonce1_hex[i] = '\0';
+            if (*p == '"') p++;
         }
         int nlen = (int)strlen(nonce1_hex);
         ctx->nonce1_len = nlen / 2;
         hex_decode(nonce1_hex, nlen, ctx->nonce1);
-        /* Parse nonce2_size: the integer after nonce1 in result array */
+        /* Parse nonce2_size: optional integer after nonce1 */
         while (*p && *p != ',' && *p != ']') p++;
         if (*p == ',') {
             p++;
             while (*p == ' ') p++;
             ctx->nonce2_size = (int)strtol(p, NULL, 10);
         }
-        if (ctx->nonce2_size <= 0) ctx->nonce2_size = 4; /* default */
+        if (ctx->nonce2_size <= 0) ctx->nonce2_size = 32 - ctx->nonce1_len; /* default: fill remaining nonce bytes */
+        if (ctx->nonce2_size <= 0) ctx->nonce2_size = 4;
         fprintf(stderr, "[stratum] Subscribed. nonce1=%s (%d bytes) nonce2_size=%d\n",
                 nonce1_hex, ctx->nonce1_len, ctx->nonce2_size);
         return 0;
@@ -466,8 +483,14 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
     memcpy(nonce_hex + off, tmp, 8);
     /* remaining chars stay as '0' */
 
-    /* The nonce2 field submitted to pool: all 64 chars after nonce1 prefix */
-    const char *nonce2_submit = nonce_hex + ctx->nonce1_len * 2;
+    /* The nonce2 field submitted to pool: exactly nonce2_size bytes (nonce2_size*2 hex chars) */
+    int nonce2_off = ctx->nonce1_len * 2;
+    int nonce2_hex_len = ctx->nonce2_size * 2;
+    if (nonce2_off + nonce2_hex_len > 64) nonce2_hex_len = 64 - nonce2_off;
+    char nonce2_submit_buf[65];
+    memcpy(nonce2_submit_buf, nonce_hex + nonce2_off, (size_t)nonce2_hex_len);
+    nonce2_submit_buf[nonce2_hex_len] = '\0';
+    const char *nonce2_submit = nonce2_submit_buf;
 
     char msg[2048];
     snprintf(msg, sizeof(msg),
@@ -475,7 +498,7 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
              "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"]}\n",
              id, ctx->user, job_id, ntime, nonce2_submit, sol_hex);
 
-    fprintf(stderr, "[stratum] Submitting share #%d nonce2=%s\n", id, nonce2_submit);
+    fprintf(stderr, "[stratum] Submitting share #%d nonce2=%s (%d chars)\n", id, nonce2_submit, nonce2_hex_len);
     return sock_send(ctx->sockfd, msg);
 }
 

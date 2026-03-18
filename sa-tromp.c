@@ -718,6 +718,7 @@ static void run_stratum_mode(const char *host, const char *port,
 
         g_cancel_mining = 0;
         ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */
+        clFinish(queue);  /* flush any pending OpenCL ops before starting new batch */
         fprintf(stderr, "[stratum] Mining nonce=%u (0x%08x)\n", nonce_val, nonce_val);
         int r = mine_batch(nonce_val, job.header, 1,
                            stratum_solution_cb, &cb_arg);
@@ -739,6 +740,7 @@ static void run_stratum_mode(const char *host, const char *port,
 int main(int argc, char *argv[]) {
     signal(SIGINT, sigint_handler);
     uint32_t total_nonces = 100000;
+    uint32_t start_nonce = 0;
     char stratum_url[256] = {0};
     char stratum_user[256] = {0};
     char stratum_pass[256] = "x";
@@ -754,6 +756,8 @@ int main(int argc, char *argv[]) {
             strncpy(stratum_user, argv[i + 1], sizeof(stratum_user) - 1); i += 2;
         } else if (strcmp(argv[i], "-P") == 0 && i + 1 < argc) {
             strncpy(stratum_pass, argv[i + 1], sizeof(stratum_pass) - 1); i += 2;
+        } else if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
+            start_nonce = (uint32_t)strtoul(argv[i + 1], NULL, 0); i += 2;
         } else {
             total_nonces = (uint32_t)atoi(argv[i]); i++;
         }
@@ -802,7 +806,7 @@ int main(int argc, char *argv[]) {
     clock_t overall_start = clock();
     int total_solutions = 0;
 
-    for (uint32_t n = 0; n < total_nonces; n++) {
+    for (uint32_t n = start_nonce; n < start_nonce + total_nonces; n++) {
         int solutions = mine_batch(n, header, 1, NULL, NULL);
         total_solutions += solutions;
         if (solutions > 0)
