@@ -1,0 +1,56 @@
+/*
+ * test_compress_sol.c — verify compress_sol against eq1927 reference solution
+ *
+ * Usage: ./test_compress_sol
+ * Hardcodes eq1927 nonce-0 solution 1 (known good), compresses it, prints hex.
+ * Cross-check: run nheqminer against same header and compare solution hex.
+ */
+
+#include <stdio.h>
+#include <stdint.h>
+#include "compress_sol.h"
+
+int main(void)
+{
+    /* eq1927 -s -p "ZERO_PoW" -n 0 first solution (128 indices, hex) */
+    uint32_t indices[128] = {
+        0x9014d, 0xf19051, 0x863c04, 0x1932ba7, 0x1f9a4e, 0xa103a0,
+        0x1c212bf, 0x1d8314e, 0x193078, 0xd5e0dd, 0xd6fe17, 0x15d9ddd,
+        0x3e04b4, 0x15d0c19, 0x52f24e, 0x145d0ed, 0x1024e9, 0xfaf5df,
+        0x6e0636, 0xdba1e4, 0x434e08, 0x1299f3a, 0x9f3f6b, 0x1dbee33,
+        0x5e6ac9, 0xfdaa54, 0x10a639a, 0x1887a9a, 0x10c9750, 0x16a3335,
+        0x1723e11, 0x19660af, 0x36f6c2, 0x140836a, 0x1bff0c5, 0x1ea821d,
+        0x13be8c3, 0x198df8e, 0x1c1b76e, 0x1e39d1a, 0x469dfc, 0xafc60e,
+        0xab66db, 0xf6f748, 0x72aec8, 0x12b6b89, 0xb3b764, 0xf6da32,
+        0x683b0e, 0x1c5a1e1, 0x18d503d, 0x1baa41c, 0xc1392f, 0x1ef0a1c,
+        0xd2f9a5, 0x14a7845, 0x800a13, 0x1b524b9, 0xe97800, 0xf95692,
+        0x91858f, 0x11750b0, 0xcd580b, 0x1dc2710, 0x11d9de, 0x9c82b9,
+        0x2b4ff9, 0x13cba54, 0x307abb, 0x166b56e, 0xcb16f7, 0x1a3963a,
+        0x5e4c9e, 0x1abe449, 0x8e44ca, 0xaaebd2, 0x9abd75, 0xb7c3d6,
+        0x1543e4b, 0x1d0b42b, 0x1e39bd, 0x14b788a, 0x187e5df, 0x18af560,
+        0x3b26a2, 0x42acf8, 0x1472a20, 0x15a8f9d, 0x350879, 0x781e71,
+        0xfac0ee, 0x18420fc, 0x85f0a2, 0xe6839f, 0xa84265, 0x11e06c1,
+        0x34e4fa, 0x11b7e38, 0x8a2d13, 0x161ccb6, 0x444990, 0x1d7ea5f,
+        0x9775ea, 0x1c69dd0, 0x5d9ea8, 0x1c1e00d, 0x740d57, 0xdd476b,
+        0xef3ace, 0x1ef0c86, 0xf98071, 0x180cdd3, 0x4a7e8c, 0x9bc64e,
+        0x12965e1, 0x12eae57, 0x5fcc3e, 0x190b247, 0xf46070, 0x10a8574,
+        0x66ad7d, 0x13aa956, 0xe72d67, 0x1f0315f, 0x7d6904, 0x1f6ed67,
+        0xc5fd40, 0xd7b1c4
+    };
+
+    uint8_t compressed[COMPRESSED_SOL_SIZE];
+    int ret = get_minimal_from_indices(indices, COMPRESS_PROOFSIZE,
+                                      compressed, sizeof(compressed));
+    if (ret != 0) {
+        fprintf(stderr, "get_minimal_from_indices failed\n");
+        return 1;
+    }
+
+    printf("Compressed solution (%d bytes):\n", COMPRESSED_SOL_SIZE);
+    for (int i = 0; i < COMPRESSED_SOL_SIZE; i++)
+        printf("%02x", compressed[i]);
+    printf("\n");
+
+    printf("Length check: %d chars (expect 800)\n", COMPRESSED_SOL_SIZE * 2);
+    return 0;
+}

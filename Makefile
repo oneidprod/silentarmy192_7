@@ -66,12 +66,27 @@ compare_blake2b : compare_blake2b.o blake.o
 compare_blake2b.o : compare_blake2b.c blake.h param.h _kernel.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c compare_blake2b.c
 
-# sa-tromp: Standalone Equihash 192,7 GPU miner with verification (Phase 6)
-sa-tromp : sa-tromp.o blake.o blake/blake2b.o
-	${CC} -o sa-tromp sa-tromp.o blake.o blake/blake2b.o ${LDFLAGS} ${LDLIBS}
+# sa-tromp: Standalone Equihash 192,7 GPU miner with Stratum pool support
+sa-tromp : sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o
+	${CC} -o sa-tromp sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o \
+	    ${LDFLAGS} ${LDLIBS} -lpthread
 
-sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c blake/blake2.h
+sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c \
+             blake/blake2.h compress_sol.h stratum.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -Iblake -c sa-tromp.c
+
+compress_sol.o : compress_sol.c compress_sol.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c compress_sol.c
+
+stratum.o : stratum.c stratum.h
+	${CC} ${CPPFLAGS} ${CFLAGS} -c stratum.c
+
+# Compression unit test (no OpenCL needed)
+test_compress_sol : test_compress_sol.o compress_sol.o
+	${CC} -o test_compress_sol test_compress_sol.o compress_sol.o
+
+test_compress_sol.o : test_compress_sol.c compress_sol.h
+	${CC} ${CFLAGS} -c test_compress_sol.c
 
 blake/blake2b.o : blake/blake2b.cpp blake/blake2.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c blake/blake2b.cpp -o blake/blake2b.o
