@@ -1210,6 +1210,8 @@ void kernel_stage1_collisions(
             for (uint b = 0; b < 21; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
 
+            { uint nz = 0; for (uint b = 0; b < 21; b++) nz |= xh[b]; if (!nz) continue; }
+
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;
             uint sl = atomic_inc(&tree1_counts[ob]);
@@ -1249,6 +1251,8 @@ void kernel_stage2_collisions(
             uchar xh[18];
             for (uint b = 0; b < 18; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            { uint nz = 0; for (uint b = 0; b < 18; b++) nz |= xh[b]; if (!nz) continue; }
 
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;
@@ -1290,6 +1294,8 @@ void kernel_stage3_collisions(
             for (uint b = 0; b < 15; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
 
+            { uint nz = 0; for (uint b = 0; b < 15; b++) nz |= xh[b]; if (!nz) continue; }
+
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;
             uint sl = atomic_inc(&tree3_counts[ob]);
@@ -1329,6 +1335,8 @@ void kernel_stage4_collisions(
             uchar xh[12];
             for (uint b = 0; b < 12; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            { uint nz = 0; for (uint b = 0; b < 12; b++) nz |= xh[b]; if (!nz) continue; }
 
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;
@@ -1370,6 +1378,8 @@ void kernel_stage5_collisions(
             for (uint b = 0; b < 9; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
 
+            { uint nz = 0; for (uint b = 0; b < 9; b++) nz |= xh[b]; if (!nz) continue; }
+
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;
             uint sl = atomic_inc(&tree5_counts[ob]);
@@ -1409,6 +1419,8 @@ void kernel_stage6_collisions(
             uchar xh[6];
             for (uint b = 0; b < 6; b++)
                 xh[b] = in[i].hash[b + 3] ^ in[j].hash[b + 3];
+
+            { uint nz = 0; for (uint b = 0; b < 6; b++) nz |= xh[b]; if (!nz) continue; }
 
             uint bits24 = ((uint)xh[0] << 16) | ((uint)xh[1] << 8) | xh[2];
             uint ob = bits24 >> RESTBITS;

@@ -607,10 +607,8 @@ int main(int argc, char *argv[]) {
             printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
 
         /* Reinit OpenCL between attempts (Beignet stability) */
-        if (n + 1 < total_nonces) {
-            cleanup_opencl();
-            init_opencl();
-        }
+        /* NOTE: disabled — cleanup_opencl hangs on Beignet after multi-nonce runs */
+        /* if (n + 1 < total_nonces) { cleanup_opencl(); init_opencl(); } */
     }
 
     double total_time = (double)(clock() - overall_start) / CLOCKS_PER_SEC;
