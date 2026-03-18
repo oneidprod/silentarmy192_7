@@ -222,13 +222,26 @@ static void handle_notify(stratum_ctx_t *ctx, const char *line)
 /*
  * Parse and apply a mining.set_target message (informational only for now).
  */
-static void handle_set_target(const char *line)
+static void handle_set_target(stratum_ctx_t *ctx, const char *line)
 {
     const char *params = strstr(line, "\"params\":[\"");
     if (!params) return;
-    char target[68] = {0};
-    json_array_get_str(params + strlen("\"params\":["), 0, target, sizeof(target));
-    fprintf(stderr, "[stratum] Target: %s\n", target);
+    char target_hex[68] = {0};
+    json_array_get_str(params + strlen("\"params\":["), 0, target_hex, sizeof(target_hex));
+    fprintf(stderr, "[stratum] Target: %s\n", target_hex);
+    if (strlen(target_hex) != 64) {
+        fprintf(stderr, "[stratum] set_target: bad length %zu\n", strlen(target_hex));
+        return;
+    }
+    uint8_t target[32];
+    if (hex_decode(target_hex, 64, target) != 0) {
+        fprintf(stderr, "[stratum] set_target: hex decode error\n");
+        return;
+    }
+    pthread_mutex_lock(&ctx->job_mutex);
+    memcpy(ctx->target, target, 32);
+    ctx->target_set = 1;
+    pthread_mutex_unlock(&ctx->job_mutex);
 }
 
 /*
@@ -263,7 +276,7 @@ static int dispatch_line(stratum_ctx_t *ctx, const char *line)
         return 0;
     }
     if (strstr(line, "\"method\":\"mining.set_target\"")) {
-        handle_set_target(line);
+        handle_set_target(ctx, line);
         return 0;
     }
     if (strstr(line, "\"method\":\"mining.set_extranonce\"")) {
@@ -356,6 +369,7 @@ void stratum_init(stratum_ctx_t *ctx, const char *host, const char *port,
                   const char *user, const char *pass)
 {
     memset(ctx, 0, sizeof(*ctx));
+    memset(ctx->target, 0xFF, 32);  /* default: all-FF = accept everything */
     ctx->sockfd     = -1;
     ctx->submit_id  = 4;
     strncpy(ctx->host, host, sizeof(ctx->host) - 1);

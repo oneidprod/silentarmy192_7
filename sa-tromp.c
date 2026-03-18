@@ -30,6 +30,7 @@ typedef uint32_t uint;
 #include "_kernel.h"
 #include "compress_sol.h"
 #include "stratum.h"
+#include "sha256.h"
 
 #define PARAM_N 192
 #define PARAM_K 7
@@ -629,7 +630,21 @@ typedef struct {
     char           job_id[STRATUM_JOB_ID_LEN];
     char           ntime[STRATUM_NTIME_LEN];
     uint32_t       nonce2;
+    uint8_t        headernonce[140];   /* for sha256d target check */
 } stratum_cb_arg_t;
+
+/* Returns 1 if sha256d(headernonce[0..139]) <= target[0..31] (big-endian), 0 otherwise. */
+static int sha256d_check_target(const uint8_t *headernonce, const uint8_t *target)
+{
+    uint8_t h1[SHA256_DIGEST_SIZE], h2[SHA256_DIGEST_SIZE];
+    Sha256_Onestep(headernonce, 140, h1);
+    Sha256_Onestep(h1, SHA256_DIGEST_SIZE, h2);
+    for (int i = 0; i < 32; i++) {
+        if (h2[i] < target[i]) return 1;
+        if (h2[i] > target[i]) return 0;
+    }
+    return 1;  /* equal: exactly meets target */
+}
 
 static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
                                  void *ud)
@@ -651,6 +666,18 @@ static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
     for (int i = 0; i < COMPRESSED_SOL_SIZE; i++)
         sprintf(sol_hex + 6 + i * 2, "%02x", compressed[i]);
     sol_hex[6 + COMPRESSED_SOL_SIZE * 2] = '\0';
+
+    /* Only submit if sha256d(headernonce) meets pool difficulty target */
+    {
+        uint8_t target[32];
+        pthread_mutex_lock(&a->ctx->job_mutex);
+        memcpy(target, a->ctx->target, 32);
+        pthread_mutex_unlock(&a->ctx->job_mutex);
+        if (!sha256d_check_target(a->headernonce, target)) {
+            fprintf(stderr, "[stratum] Solution below difficulty, skipping\n");
+            return;
+        }
+    }
 
     stratum_submit(a->ctx, a->job_id, a->ntime, a->nonce2, sol_hex);
 }
@@ -718,6 +745,12 @@ static void run_stratum_mode(const char *host, const char *port,
         cb_arg.job_id[sizeof(cb_arg.job_id) - 1] = '\0';
         strncpy(cb_arg.ntime,  job.ntime,  sizeof(cb_arg.ntime) - 1);
         cb_arg.ntime[sizeof(cb_arg.ntime) - 1] = '\0';
+
+        /* Build headernonce so the solution callback can sha256d it for target check */
+        memcpy(cb_arg.headernonce, job.header, 108);
+        memset(cb_arg.headernonce + 108, 0, 32);
+        ((uint32_t *)cb_arg.headernonce)[27] = htole32(nonce_val);
+        ((uint32_t *)cb_arg.headernonce)[28] = htole32(nonce2);
 
         g_cancel_mining = 0;
         ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */

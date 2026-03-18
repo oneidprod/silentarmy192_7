@@ -39,6 +39,10 @@ typedef struct {
     /* mining cancel flag — set by recv thread on clean_jobs=true notify */
     volatile int   cancel;
 
+    /* pool difficulty target — protected by job_mutex */
+    uint8_t  target[32];   /* sha256d(headernonce) must be <= this to submit; big-endian */
+    int      target_set;   /* 1 once pool sent mining.set_target */
+
     /* state */
     int      authorized;
     int      connected;

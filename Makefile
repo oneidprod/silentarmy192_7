@@ -67,12 +67,12 @@ compare_blake2b.o : compare_blake2b.c blake.h param.h _kernel.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c compare_blake2b.c
 
 # sa-tromp: Standalone Equihash 192,7 GPU miner with Stratum pool support
-sa-tromp : sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o
-	${CC} -o sa-tromp sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o \
+sa-tromp : sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o sha256.o
+	${CC} -o sa-tromp sa-tromp.o compress_sol.o stratum.o blake.o blake/blake2b.o sha256.o \
 	    ${LDFLAGS} ${LDLIBS} -lpthread
 
 sa-tromp.o : sa-tromp.c blake.h param.h _kernel.h solution_extraction.c \
-             blake/blake2.h compress_sol.h stratum.h
+             blake/blake2.h compress_sol.h stratum.h sha256.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -Iblake -c sa-tromp.c
 
 compress_sol.o : compress_sol.c compress_sol.h
