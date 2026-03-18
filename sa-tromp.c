@@ -28,9 +28,9 @@ typedef uint32_t uint;
 #define PARAM_N 192
 #define PARAM_K 7
 #define ZCASH_HASH_LEN 48
-#define RESTBITS 5
+#define RESTBITS 4
 #define BUCKBITS (24-RESTBITS)
-#define NBUCKETS (1<<BUCKBITS)  // 512K buckets
+#define NBUCKETS (1<<BUCKBITS)  // 1M buckets
 #define NSLOTS 64
 #define SLOTBITS 6    // log2(64); 6 bits holds 0-63
 #define HASHBYTES_STAGE0 24
@@ -282,18 +282,10 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     const size_t DISPATCH = (size_t)(1 << 18);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
     uint32_t *cpu_attrs[8] = {NULL};
-    cl_mem    gpu_attrs[8] = {NULL};   /* persistent GPU attr buffers, one per stage */
     /* GPU slot sizes with 4-byte alignment padding (matches Beignet OpenCL C sizeof).
      * Stages 2,3,5,6,7 have uchar hash[] that doesn't fill to 4-byte boundary,
      * so Beignet adds tail padding. */
     const size_t _slot_sz[8] = {28,28,24,20,16,16,12,8};
-
-    /* Allocate 8 compact GPU attr buffers upfront: tree_size * 4B = 128 MB each */
-    for (int s = 0; s < 8; s++) {
-        gpu_attrs[s] = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                                      tree_size * sizeof(uint32_t), NULL, &err);
-        check_error(err, "gpu_attrs");
-    }
 
     if (show_progress)
         printf("\n--- Mining nonce %u ---\n", nonce_idx);
@@ -363,18 +355,26 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             check_error(err, "kernel_round0_gen");
             clFinish(queue);
         }
-        /* Extract attrs[0] from buf_tree0 during first pass (batched: tree_size >> DISPATCH) */
+        /* Extract attrs[0]: allocate temp GPU buf, extract, readback to CPU, free GPU buf */
         { uint32_t stride = (uint32_t)_slot_sz[0];
+          cl_mem tmp_attr = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                           tree_size * sizeof(uint32_t), NULL, &err);
+          check_error(err, "gpu_attrs[0]");
           clSetKernelArg(kernel_extract_attrs_k, 0, sizeof(cl_mem), &buf_tree0);
           clSetKernelArg(kernel_extract_attrs_k, 1, sizeof(uint32_t), &stride);
-          clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[0]);
+          clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &tmp_attr);
           for (size_t base = 0; base < tree_size; base += DISPATCH) {
               size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
               uint32_t base_u = (uint32_t)base;
               clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
               clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
               clFinish(queue);
-          } }
+          }
+          cpu_attrs[0] = malloc(tree_size * sizeof(uint32_t));
+          if (!cpu_attrs[0]) { fprintf(stderr, "OOM cpu_attrs[0]\n"); exit(1); }
+          clEnqueueReadBuffer(queue, tmp_attr, CL_TRUE, 0,
+                              tree_size * sizeof(uint32_t), cpu_attrs[0], 0, NULL, NULL);
+          clReleaseMemObject(tmp_attr); }
         clReleaseMemObject(buf_blake_st);
 
         uint32_t *cnt = calloc(NBUCKETS, sizeof(uint32_t));
@@ -428,18 +428,26 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             check_error(err, "stage1");
             clFinish(queue);
         }
-        /* Extract attrs[1] from buf_tree1 during first pass (batched) */
+        /* Extract attrs[1]: temp GPU buf, extract, readback to CPU, free GPU buf */
         { uint32_t stride = (uint32_t)_slot_sz[1];
+          cl_mem tmp_attr = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                           tree_size * sizeof(uint32_t), NULL, &err);
+          check_error(err, "gpu_attrs[1]");
           clSetKernelArg(kernel_extract_attrs_k, 0, sizeof(cl_mem), &buf_tree1);
           clSetKernelArg(kernel_extract_attrs_k, 1, sizeof(uint32_t), &stride);
-          clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[1]);
+          clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &tmp_attr);
           for (size_t base = 0; base < tree_size; base += DISPATCH) {
               size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
               uint32_t base_u = (uint32_t)base;
               clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
               clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
               clFinish(queue);
-          } }
+          }
+          cpu_attrs[1] = malloc(tree_size * sizeof(uint32_t));
+          if (!cpu_attrs[1]) { fprintf(stderr, "OOM cpu_attrs[1]\n"); exit(1); }
+          clEnqueueReadBuffer(queue, tmp_attr, CL_TRUE, 0,
+                              tree_size * sizeof(uint32_t), cpu_attrs[1], 0, NULL, NULL);
+          clReleaseMemObject(tmp_attr); }
         /* tree0 reused as ping-pong buffer — do NOT release here */
         clReleaseMemObject(buf_t0_cnt);
 
@@ -483,18 +491,26 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
                 clFinish(queue);
             }
 
-            /* Extract attrs[s] from curr (just-written output buffer, batched) */
+            /* Extract attrs[s]: temp GPU buf, extract, readback to CPU, free GPU buf */
             { uint32_t stride = (uint32_t)_slot_sz[s];
+              cl_mem tmp_attr = clCreateBuffer(context, CL_MEM_READ_WRITE,
+                                               tree_size * sizeof(uint32_t), NULL, &err);
+              check_error(err, "gpu_attrs[s]");
               clSetKernelArg(kernel_extract_attrs_k, 0, sizeof(cl_mem), &curr);
               clSetKernelArg(kernel_extract_attrs_k, 1, sizeof(uint32_t), &stride);
-              clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &gpu_attrs[s]);
+              clSetKernelArg(kernel_extract_attrs_k, 2, sizeof(cl_mem), &tmp_attr);
               for (size_t base = 0; base < tree_size; base += DISPATCH) {
                   size_t d = (base + DISPATCH <= tree_size) ? DISPATCH : (tree_size - base);
                   uint32_t base_u = (uint32_t)base;
                   clSetKernelArg(kernel_extract_attrs_k, 3, sizeof(uint32_t), &base_u);
                   clEnqueueNDRangeKernel(queue, kernel_extract_attrs_k, 1, NULL, &d, NULL, 0, NULL, NULL);
                   clFinish(queue);
-              } }
+              }
+              cpu_attrs[s] = malloc(tree_size * sizeof(uint32_t));
+              if (!cpu_attrs[s]) { fprintf(stderr, "OOM cpu_attrs[%d]\n", s); exit(1); }
+              clEnqueueReadBuffer(queue, tmp_attr, CL_TRUE, 0,
+                                  tree_size * sizeof(uint32_t), cpu_attrs[s], 0, NULL, NULL);
+              clReleaseMemObject(tmp_attr); }
             prev = curr;
 
             clEnqueueReadBuffer(queue, buf_counts[s-1], CL_TRUE, 0,
@@ -522,14 +538,7 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
 
         if (nsol > 0) {
-            /* ── Phase 3c: Read back gpu_attrs → CPU, then extract and verify solutions ── */
-            for (int r = 0; r < 8; r++) {
-                cpu_attrs[r] = malloc(tree_size * sizeof(uint32_t));
-                if (!cpu_attrs[r]) { fprintf(stderr, "OOM cpu_attrs[%d]\n", r); exit(1); }
-                clEnqueueReadBuffer(queue, gpu_attrs[r], CL_TRUE, 0,
-                                    tree_size * sizeof(uint32_t), cpu_attrs[r], 0, NULL, NULL);
-            }
-
+            /* cpu_attrs[0..7] already populated during pipeline (immediate readback) */
             uint32_t tree_sz = (uint32_t)tree_size;
             int n_extracted = 0, n_verified = 0;
             for (uint32_t s = 0; s < nsol; s++) {
@@ -556,7 +565,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
             clReleaseMemObject(buf_tree0);
             clReleaseMemObject(buf_tree1);
             for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
-            for (int s = 0; s < 8; s++) clReleaseMemObject(gpu_attrs[s]);
             for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
             return valid_solutions;
         }
@@ -566,7 +574,6 @@ int mine_batch(uint32_t nonce_idx, uint8_t *header, int show_progress) {
     clReleaseMemObject(buf_tree0);
     clReleaseMemObject(buf_tree1);
     for (int i = 0; i < 7; i++) clReleaseMemObject(buf_counts[i]);
-    for (int s = 0; s < 8; s++) clReleaseMemObject(gpu_attrs[s]);
     for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
     return valid_solutions;
 }

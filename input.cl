@@ -1147,7 +1147,7 @@ typedef struct {
 } stage0_slot_t;
 
 /* Collision detection constants */
-#define RESTBITS        5
+#define RESTBITS        4
 #define BUCKBITS        (24 - RESTBITS)
 #define NBUCKETS_STAGE1 (1 << BUCKBITS)   /* 2^19 = 512K */
 #define NSLOTS_STAGE1   64
