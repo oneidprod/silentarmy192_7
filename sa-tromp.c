@@ -317,7 +317,7 @@ void generate_round0_hashes(unsigned char *hashes, uint32_t nonces, uint8_t *hea
  *
  * NOTE: solution extraction via mine_batch_extract() (defined below).
  */
-int mine_batch(uint32_t nonce_idx, uint32_t nonce2_val, uint8_t *header, int show_progress,
+int mine_batch(uint32_t nonce_idx, const uint8_t *nonce32, uint8_t *header, int show_progress,
                void (*solution_cb)(const uint32_t *indices, uint32_t nonce_idx, void *ud),
                void *ud) {
     cl_int err;
@@ -341,8 +341,13 @@ int mine_batch(uint32_t nonce_idx, uint32_t nonce2_val, uint8_t *header, int sho
      * GPU block2 = {0(×12), g(×4)}: word0=0, word1=g<<32 (nonce absorbed in state h). */
     uint8_t headernonce[140] = {0};
     memcpy(headernonce, header, 108);  /* header is ≤108 bytes; rest zero */
-    ((uint32_t *)headernonce)[27] = htole32(nonce_idx);   /* nonce1 at bytes 108-111 */
-    ((uint32_t *)headernonce)[28] = htole32(nonce2_val);  /* nonce2 at bytes 112-115 */
+    if (nonce32) {
+        /* Stratum mode: pool nonce is nonce1_bytes || nonce2_bytes (32 bytes, big-endian) */
+        memcpy(headernonce + 108, nonce32, 32);
+    } else {
+        /* Solo mode: simple incrementing nonce at bytes 108-111 LE */
+        ((uint32_t *)headernonce)[27] = htole32(nonce_idx);
+    }
 
     blake2b_param P = {0};
     P.digest_length = ZCASH_HASH_LEN;
@@ -697,19 +702,6 @@ static void *stratum_recv_thread(void *arg)
     return NULL;
 }
 
-/* Build the 4-byte nonce value to embed in headernonce:
- *   nonce1 bytes → low bytes, nonce2 → next bytes.
- *   For nonce1_len=2: result = (nonce2 << 16) | (nonce1[0] | nonce1[1]<<8)
- *   Stored LE at headernonce[128..131]. */
-static uint32_t build_nonce(const uint8_t *nonce1, int nonce1_len, uint32_t nonce2)
-{
-    uint32_t n = 0;
-    for (int i = 0; i < nonce1_len && i < 4; i++)
-        n |= ((uint32_t)nonce1[i]) << (8 * i);
-    /* nonce2 fills remaining bytes */
-    n |= (nonce2 << (8 * nonce1_len));
-    return n;
-}
 
 static void run_stratum_mode(const char *host, const char *port,
                              const char *user, const char *pass)
@@ -736,7 +728,20 @@ static void run_stratum_mode(const char *host, const char *port,
             continue;
         }
 
-        uint32_t nonce_val = build_nonce(ctx.nonce1, ctx.nonce1_len, nonce2);
+        /* Build 32-byte pool nonce: nonce1_bytes || nonce2_bytes (big-endian, as pool does) */
+        uint8_t nonce32[32] = {0};
+        memcpy(nonce32, ctx.nonce1, ctx.nonce1_len);
+        /* nonce2 stored little-endian after nonce1 (matches hex submitted to pool) */
+        int n2off = ctx.nonce1_len;
+        nonce32[n2off + 0] = (nonce2      ) & 0xFF;
+        nonce32[n2off + 1] = (nonce2 >>  8) & 0xFF;
+        nonce32[n2off + 2] = (nonce2 >> 16) & 0xFF;
+        nonce32[n2off + 3] = (nonce2 >> 24) & 0xFF;
+        /* remaining bytes stay 0 */
+
+        /* nonce_idx for GPU kernel: first 4 bytes of nonce32 as uint32 LE */
+        uint32_t nonce_val = ((uint32_t)nonce32[0] << 24) | ((uint32_t)nonce32[1] << 16) |
+                             ((uint32_t)nonce32[2] <<  8) |  (uint32_t)nonce32[3];
 
         stratum_cb_arg_t cb_arg;
         cb_arg.ctx   = &ctx;
@@ -746,17 +751,15 @@ static void run_stratum_mode(const char *host, const char *port,
         strncpy(cb_arg.ntime,  job.ntime,  sizeof(cb_arg.ntime) - 1);
         cb_arg.ntime[sizeof(cb_arg.ntime) - 1] = '\0';
 
-        /* Build headernonce so the solution callback can sha256d it for target check */
+        /* headernonce for sha256d target check: header + full 32-byte pool nonce */
         memcpy(cb_arg.headernonce, job.header, 108);
-        memset(cb_arg.headernonce + 108, 0, 32);
-        ((uint32_t *)cb_arg.headernonce)[27] = htole32(nonce_val);
-        ((uint32_t *)cb_arg.headernonce)[28] = htole32(nonce2);
+        memcpy(cb_arg.headernonce + 108, nonce32, 32);
 
         g_cancel_mining = 0;
         ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */
         clFinish(queue);  /* flush any pending OpenCL ops before starting new batch */
-        fprintf(stderr, "[stratum] Mining nonce=%u (0x%08x)\n", nonce_val, nonce_val);
-        int r = mine_batch(nonce_val, nonce2, job.header, 1,
+        fprintf(stderr, "[stratum] Mining nonce=%08x nonce2=%u\n", nonce_val, nonce2);
+        int r = mine_batch(nonce_val, nonce32, job.header, 1,
                            stratum_solution_cb, &cb_arg);
         if (r == -1) {
             /* Interrupted by new job — reset nonce2 for fresh job */
@@ -841,7 +844,7 @@ int main(int argc, char *argv[]) {
     int total_solutions = 0;
 
     for (uint32_t n = start_nonce; n < start_nonce + total_nonces; n++) {
-        int solutions = mine_batch(n, 0, header, 1, NULL, NULL);
+        int solutions = mine_batch(n, NULL, header, 1, NULL, NULL);
         total_solutions += solutions;
         if (solutions > 0)
             printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
