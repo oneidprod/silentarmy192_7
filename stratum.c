@@ -209,7 +209,7 @@ static void handle_notify(stratum_ctx_t *ctx, const char *line)
             job_id, ntime, clean);
 
     pthread_mutex_lock(&ctx->job_mutex);
-    if (clean) ctx->cancel = 1;
+    ctx->cancel = 1;  /* cancel on every new job, not just clean=1 */
     stratum_job_t *j = &ctx->job;
     snprintf(j->job_id, sizeof(j->job_id), "%s", job_id);
     memcpy(j->header, header, STRATUM_HEADER_LEN);
@@ -524,7 +524,7 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
              "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"]}\n",
              id, ctx->user, job_id, ntime, nonce2_submit, sol_hex);
 
-    fprintf(stderr, "[stratum] Submitting share #%d nonce2=%s (%d chars)\n", id, nonce2_submit, nonce2_hex_len);
+    fprintf(stderr, "[stratum] Submitting share #%d\n", id);
     return sock_send(ctx->sockfd, msg);
 }
 

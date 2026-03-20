@@ -170,6 +170,10 @@ cl_kernel kernels[7];
 cl_kernel kernel_round0_gen;
 cl_kernel kernel_extract_attrs_k;
 
+/* OpenCL driver detection — set once in init_opencl(), used throughout */
+typedef enum { DRIVER_BEIGNET, DRIVER_NEO } opencl_driver_t;
+static opencl_driver_t g_driver = DRIVER_BEIGNET;  /* safe default */
+
 /* Persistent GPU buffers — allocated once in init_opencl, reused every nonce.
  * Avoids Beignet OOM: clReleaseMemObject doesn't actually free shared RAM. */
 static cl_mem g_buf_tree0   = NULL;
@@ -186,9 +190,10 @@ void check_error(cl_int err, const char *operation) {
 }
 
 void init_opencl(void) {
-    // Static counter to force unique builds (workaround for Beignet kernel caching)
+    /* Static counter to force unique builds (workaround for Beignet kernel caching).
+     * NEO caches correctly — no need to bust. */
     static int build_id = 0;
-    build_id++;
+    if (g_driver == DRIVER_BEIGNET) build_id++;
     
     cl_int err;
     
@@ -209,7 +214,28 @@ void init_opencl(void) {
     }
     platform = platforms[g_platform_idx];
     { char name[128] = {0};
-      clGetPlatformInfo(platform, CL_PLATFORM_NAME, sizeof(name), name, NULL);
+      char version[128] = {0};
+      clGetPlatformInfo(platform, CL_PLATFORM_NAME,    sizeof(name),    name,    NULL);
+      clGetPlatformInfo(platform, CL_PLATFORM_VERSION, sizeof(version), version, NULL);
+      /* Detect driver: Beignet identifies itself in the platform name */
+      /* Build lowercase of name+version for Beignet detection.
+       * Beignet reports: name="Intel Gen OCL Driver", version="OpenCL 2.0 beignet 1.x"
+       * NEO reports:     name="Intel(R) OpenCL HD Graphics", version="OpenCL 3.0 ..." */
+      char combined[256];
+      snprintf(combined, sizeof(combined), "%s %s", name, version);
+      char name_lower[256];
+      for (int i = 0; combined[i] && i < 255; i++)
+          name_lower[i] = (combined[i] >= 'A' && combined[i] <= 'Z') ? combined[i] + 32 : combined[i];
+      name_lower[strlen(combined)] = '\0';
+      if (strstr(name_lower, "beignet")) {
+          g_driver = DRIVER_BEIGNET;
+          fprintf(stderr, "[opencl] driver: Beignet (%s)\n", version);
+          fprintf(stderr, "[opencl] NDRange batch: 2^18 (Beignet hang limit)\n");
+      } else {
+          g_driver = DRIVER_NEO;
+          fprintf(stderr, "[opencl] driver: Intel NEO / %s (%s)\n", name, version);
+          fprintf(stderr, "[opencl] NDRange batch: 2^20 (NEO — no hang limit)\n");
+      }
       printf("OpenCL platform [%d]: %s\n", g_platform_idx, name); }
 
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
@@ -328,8 +354,10 @@ int mine_batch(uint32_t nonce_idx, const uint8_t *nonce32, uint8_t *header, int 
                void (*solution_cb)(const uint32_t *indices, uint32_t nonce_idx, void *ud),
                void *ud) {
     cl_int err;
-    /* Beignet safe dispatch size: 2^18 work items per clEnqueueNDRangeKernel */
-    const size_t DISPATCH = (size_t)(1 << 18);
+    /* Dispatch batch size per clEnqueueNDRangeKernel.
+     * Beignet: 2^18 — larger dispatches hang the GPU (no watchdog).
+     * NEO: 2^20 — no hang limit; 4x fewer kernel launches per stage. */
+    const size_t DISPATCH = (g_driver == DRIVER_BEIGNET) ? (size_t)(1 << 18) : (size_t)(1 << 20);
     const size_t tree_size = (size_t)NBUCKETS * NSLOTS;
     uint32_t *cpu_attrs[8] = {NULL};
     /* GPU slot sizes with 4-byte alignment padding (matches Beignet OpenCL C sizeof).
