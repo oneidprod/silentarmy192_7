@@ -721,6 +721,10 @@ static void run_stratum_mode(const char *host, const char *port,
     pthread_create(&recv_tid, NULL, stratum_recv_thread, &ctx);
 
     uint32_t nonce2 = 0;
+    struct timespec rate_start;
+    clock_gettime(CLOCK_MONOTONIC, &rate_start);
+    int rate_solutions = 0;
+    int rate_nonces = 0;
     while (!g_shutdown) {
         stratum_job_t job;
         if (!stratum_get_job(&ctx, &job)) {
@@ -766,7 +770,19 @@ static void run_stratum_mode(const char *host, const char *port,
             nonce2 = 0;
             continue;
         }
+        rate_solutions += r;
         nonce2++;  /* advance nonce2 so next batch has a different nonce */
+        rate_nonces++;
+        if (rate_nonces % 10 == 0) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            double elapsed = (now.tv_sec - rate_start.tv_sec) +
+                             (now.tv_nsec - rate_start.tv_nsec) / 1e9;
+            printf("[stratum] Rate: %.4f sol/s (%d solutions in %.1fs, %d nonces)\n",
+                   elapsed > 0 ? rate_solutions / elapsed : 0.0,
+                   rate_solutions, elapsed, rate_nonces);
+            fflush(stdout);
+        }
     }
 
     stratum_disconnect(&ctx);
@@ -855,8 +871,9 @@ int main(int argc, char *argv[]) {
     }
 
     double total_time = (double)(clock() - overall_start) / CLOCKS_PER_SEC;
-    printf("\n=== DONE: %u nonce(s) in %.2fs, %d valid solution(s) ===\n",
-           total_nonces, total_time, total_solutions);
+    printf("\n=== DONE: %u nonce(s) in %.2fs, %d valid solution(s), %.4f sol/s ===\n",
+           total_nonces, total_time, total_solutions,
+           total_time > 0 ? total_solutions / total_time : 0.0);
 
     cleanup_opencl();
     return (total_solutions > 0) ? 0 : 1;
