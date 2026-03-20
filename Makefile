@@ -1,18 +1,15 @@
-# Change this path if the SDK was installed in a non-standard location
-# OPENCL_HEADERS = "/opt/AMDAPPSDK-3.0/include"
 OPENCL_HEADERS = "/usr/lib/x86_64-linux-gnu/beignet/include/"
-# By default libOpenCL.so is searched in default system locations, this path
-# lets you adds one more directory to the search path.
-# LIBOPENCL = "/opt/amdgpu-pro/lib/x86_64-linux-gnu"
-LIBOPENCL = "/usr/lib/x86_64-linux-gnu/beignet/"
+LIBOPENCL      = "/usr/lib/x86_64-linux-gnu/beignet/"
 
-CC = gcc
-CPPFLAGS = -I${OPENCL_HEADERS}
-CFLAGS = -O3 -march=native -std=gnu99 -pedantic -Wextra -Wall \
+CC      = gcc
+CPPFLAGS = -I${OPENCL_HEADERS} -DCL_TARGET_OPENCL_VERSION=120
+CFLAGS  = -O3 -march=native -std=gnu99 -pedantic -Wextra -Wall \
     -Wno-deprecated-declarations \
     -Wno-overlength-strings
-LDFLAGS = -rdynamic -L${LIBOPENCL}
-LDLIBS = -lOpenCL -lrt
+LDFLAGS = -L${LIBOPENCL}
+LDLIBS  = -lOpenCL -lrt
+
+.PHONY : all clean re
 
 all : sa-tromp
 
@@ -43,7 +40,8 @@ sha256.o : sha256.c sha256.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c sha256.c
 
 blake/blake2b.o : blake/blake2b.cpp blake/blake2.h
-	${CC} ${CPPFLAGS} -O3 -march=native -Wall -Wno-deprecated-declarations -c blake/blake2b.cpp -o blake/blake2b.o
+	${CC} ${CPPFLAGS} -O3 -march=native -Wall -Wno-deprecated-declarations \
+	    -c blake/blake2b.cpp -o blake/blake2b.o
 
 # Test verifier — uses Tromp's blake2b to verify eq1927 reference solutions
 test_verifier : test_verifier.o blake/blake2b.o
