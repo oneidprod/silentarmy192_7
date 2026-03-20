@@ -2,6 +2,8 @@
 /.hgignore
 /sa-solver
 /sa-tromp
+/test_verifier
+/test_compress_sol
 /_kernel.h
 *.o
 _temp_*
