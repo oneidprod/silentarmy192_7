@@ -8,7 +8,7 @@ LIBOPENCL = "/usr/lib/x86_64-linux-gnu/beignet/"
 
 CC = gcc
 CPPFLAGS = -I${OPENCL_HEADERS}
-CFLAGS = -O3 -std=gnu99 -pedantic -Wextra -Wall \
+CFLAGS = -O3 -march=native -std=gnu99 -pedantic -Wextra -Wall \
     -Wno-deprecated-declarations \
     -Wno-overlength-strings
 LDFLAGS = -rdynamic -L${LIBOPENCL}
