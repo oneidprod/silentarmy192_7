@@ -12,14 +12,14 @@ export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/beignet":$LD_LIBRARY_PATH
 # PASS=x
 
 #zeropool
-POOL=stratum+tcp://zeropool.io:1241
-WALLET=t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g.test
-PASS=x
+#POOL=stratum+tcp://zeropool.io:1241
+#WALLET=t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g.test
+#PASS=x
 
-#zpool (BROKEN - proprietary fork missing Equihash 192,7)
-# POOL=stratum+tcp://equihash192.na.mine.zpool.ca:2192
-# WALLET=t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g
-# PASS=test,c=ZER,zap=ZER
+#zpool
+POOL=stratum+tcp://equihash192.na.mine.zpool.ca:2192
+WALLET=t1TCgwxZ3RMpWtg3Tu5qk8BcNdawRHeJd1g
+PASS=test,c=ZER,zap=ZER
 
 #WALLET=t1JdJNvywTpsnNavx9k97qqegSVwBPkhr9J
 #WALLET=t1e6nAkZLoXUgwRuJ9qj2CF15qkroWVsVVQ.test
