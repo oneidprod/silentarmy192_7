@@ -1,6 +1,0 @@
-/home/mine/silentarmy192_7/silentarmy:191: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
-  def reconnect(self):
-/home/mine/silentarmy192_7/silentarmy:210: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
-  def show_stats(self):
-/home/mine/silentarmy192_7/silentarmy:308: DeprecationWarning: "@coroutine" decorator is deprecated since Python 3.8, use "async def" instead
-  def start_solvers(self, devid):

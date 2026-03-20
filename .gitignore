@@ -1,6 +1,7 @@
 /.hg/
 /.hgignore
 /sa-solver
+/sa-tromp
 /_kernel.h
 *.o
 _temp_*
