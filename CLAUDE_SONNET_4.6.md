@@ -78,28 +78,55 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#43 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#44 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 43 Plan — IN PROGRESS (not started)
+### ⚠️ Session 44 Plan — NOT STARTED
 
 #### Goal
-Output polish + robustness fixes.
+Investigate why NEO 21.40 is slower than Beignet and attempt to close the gap.
 
-#### Plan
-1. **Strip nonce2 hex from submit log** (`stratum.c` ~line 527) — noisy, 1-line cleanup
-2. **Nonce2 reset on any new job** — currently only resets on `clean=1`; should reset on any new job to avoid submitting stale nonces
-3. **Vardiff handling** — verify miner adapts if pool ramps difficulty (may be a no-op)
+#### Background
+- NEO 21.40 installed and working (`./sa-tromp -p 1`)
+- Benchmark: NEO 0.33 sol/s vs Beignet 0.62 sol/s — NEO is ~47% slower
+- Stage 0 (hash gen): NEO 1.04s vs Beignet 0.47s — this is the biggest gap
+- Collision stages: NEO ~0.30-0.35s vs Beignet ~0.20-0.40s — roughly comparable
+- DISPATCH on NEO = 2^20 (4x larger than Beignet's 2^18) — less launch overhead, but Stage 0 still slower
 
-#### Note on benchmarking
-- `./sa-tromp 1` is too noisy (±15% on Beignet). Use `./sa-tromp 3` for stable average.
-- sol/s = solutions/total_time, not nonces/s — variance is normal.
+#### Investigation plan
+1. **Profile Stage 0 separately** — is it the blake2b kernel or the NDRange overhead?
+2. **Try DISPATCH = 2^18 on NEO** — maybe 2^20 is actually worse for this iGPU/driver combo
+3. **Check NEO compiler flags** — `-cl-fast-relaxed-math`, `-cl-mad-enable` may help
+4. **Compare kernel_round0_gen timing** — run with verbose per-dispatch timing if needed
 
-#### Repo state after Session 42 cleanup
-- Dead files removed (328 files, sa-solver, logs, debug tools, thirdparty)
-- Reference solvers moved to `~/equihash_tromp`, `~/nheqminer-C-192_7-zero`
-- Makefile: `make` builds sa-tromp, silent, no warnings, .PHONY declared
-- Binary `sa-tromp` gitignored (rebuild with `make`)
-- `make clean && make` is the correct full rebuild command
+### ⚠️ Session 43 State (2026-03-20) — COMPLETE ✅
+
+#### Goal
+Output polish + NEO driver auto-detect.
+
+#### What was done (Session 43)
+
+**Commits this session:**
+- `0162924`: feat: NEO driver auto-detect + output polish
+
+**Changes:**
+- `stratum.c`: submit log now just `[stratum] Submitting share #N` (no nonce2 hex)
+- `stratum.c`: `ctx->cancel = 1` fires on every new job, not just `clean=1` (avoids stale nonce reuse)
+- `sa-tromp.c`: runtime detect Beignet vs NEO via `CL_PLATFORM_NAME + CL_PLATFORM_VERSION`
+- `sa-tromp.c`: prints driver + NDRange batch size at startup
+- `sa-tromp.c`: DISPATCH = 2^18 on Beignet, 2^20 on NEO (4x fewer kernel launches)
+- `sa-tromp.c`: build_id cache-bust skipped on NEO (NEO caches correctly)
+
+**NEO status:**
+- NEO 20.44 (Ubuntu 21.04) fails with SPIR-V `i128` backend error on kernel compile
+- Root cause: `uint * uint` pointer arithmetic in `input.cl` generates 128-bit intermediate — NEO 20.44 can't handle it
+- Fix requires either: (a) upgrade NEO to 22.x+, or (b) cast all `uint*` offsets to `(ulong)` in `input.cl`
+- `input.cl` reverted — Beignet path unchanged and working
+- Auto-detect foundation is in place; NEO will work once driver is upgraded
+
+**Current state:**
+- Beignet: ✓ ~0.60 sol/s, driver correctly detected at startup
+- NEO: kernel compile fails on 20.44 — needs newer driver
+- Select platform: `./sa-tromp -p 0` (Beignet), `./sa-tromp -p 1` (NEO)
 
 ### ⚠️ Session 42 State (2026-03-20) — COMPLETE ✅
 

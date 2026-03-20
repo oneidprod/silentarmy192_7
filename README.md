@@ -128,13 +128,40 @@ subsection below:
 2. Either reboot, or load the kernel driver:
    `$ sudo modprobe nvidia_361`
    
-### Ubuntu 16.04 / Intel
+### Ubuntu / Intel (sa-tromp)
 
-1. Install the OpenCL headers and library:
-    `$ sudo apt-get install beignet-opencl-icd`
-    
-2. You must either alter the Makefile below or build silentarmy using
-    ` make OPENCL_HEADERS=/usr/lib/x86_64-linux-gnu/beignet/include/ LIBOPENCL=/usr/lib/x86_64-linux-gnu/beignet/ LDLIBS="-lcl -lrt"`
+sa-tromp supports two Intel OpenCL drivers. It auto-detects which is present at startup
+and prints the driver name + NDRange batch size.
+
+#### Option A: Beignet (recommended for older Ubuntu / iGPU)
+- Tested: **Beignet 1.3** on Ubuntu 21.04, Intel UHD Graphics (Coffee Lake)
+- Performance: ~0.62 sol/s on Intel UHD 630
+- Install: `sudo apt-get install beignet-opencl-icd`
+- Beignet is the default (platform 0). No flags needed: `./sa-tromp`
+
+#### Option B: Intel NEO (intel-opencl-icd)
+- Tested: **NEO 21.40** on Ubuntu 21.04 — compiles and runs but ~0.33 sol/s (slower than Beignet on this hardware/version)
+- Newer NEO versions (22.x+) available on Ubuntu 22.04+ may perform better
+- Install debs from https://github.com/intel/compute-runtime/releases
+  (requires: intel-gmmlib, intel-igc-core, intel-igc-opencl, intel-opencl-icd)
+- Select NEO explicitly: `./sa-tromp -p 1`
+
+#### Driver selection
+```
+# List platforms at startup (always printed):
+./sa-tromp 1
+# [opencl] driver: Beignet (OpenCL 2.0 beignet 1.3)   ← platform 0
+# [opencl] driver: Intel NEO / Intel(R) OpenCL HD Graphics (OpenCL 3.0)  ← platform 1
+
+./sa-tromp -p 0    # force Beignet
+./sa-tromp -p 1    # force NEO
+```
+
+#### Build (Intel, either driver)
+```
+make
+```
+The Makefile uses Beignet headers for compilation; the resulting binary works with both drivers at runtime.
 
 ## Step 2: Python 3.3
 
