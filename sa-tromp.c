@@ -252,7 +252,10 @@ void init_opencl(void) {
     
     // Add unique build ID to force recompilation (workaround for Beignet caching)
     char build_opts[256];
-    snprintf(build_opts, sizeof(build_opts), "-DPARAM_N=192 -DPARAM_K=7 -DBUILD_ID=%d", build_id);
+    if (g_driver == DRIVER_NEO)
+        snprintf(build_opts, sizeof(build_opts), "-DPARAM_N=192 -DPARAM_K=7 -DBUILD_ID=%d -cl-fast-relaxed-math -cl-mad-enable", build_id);
+    else
+        snprintf(build_opts, sizeof(build_opts), "-DPARAM_N=192 -DPARAM_K=7 -DBUILD_ID=%d", build_id);
     err = clBuildProgram(program, 1, &device, build_opts, NULL, NULL);
     if (err != CL_SUCCESS) {
         size_t log_size;
