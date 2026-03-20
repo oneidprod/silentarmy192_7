@@ -3,7 +3,6 @@
 #include <assert.h>
 #include "blake.h"
 
-static const uint32_t   blake2b_block_len = 128;
 static const uint32_t   blake2b_rounds = 12;
 static const uint64_t   blake2b_iv[8] =
 {

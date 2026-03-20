@@ -43,7 +43,7 @@ sha256.o : sha256.c sha256.h
 	${CC} ${CPPFLAGS} ${CFLAGS} -c sha256.c
 
 blake/blake2b.o : blake/blake2b.cpp blake/blake2.h
-	${CC} ${CPPFLAGS} ${CFLAGS} -c blake/blake2b.cpp -o blake/blake2b.o
+	${CC} ${CPPFLAGS} -O3 -march=native -Wall -Wno-deprecated-declarations -c blake/blake2b.cpp -o blake/blake2b.o
 
 # Test verifier — uses Tromp's blake2b to verify eq1927 reference solutions
 test_verifier : test_verifier.o blake/blake2b.o
