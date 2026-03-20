@@ -83,7 +83,7 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 ### ⚠️ Session 43 Plan — IN PROGRESS (not started)
 
 #### Goal
-Optional output polish + robustness fixes.
+Output polish + robustness fixes.
 
 #### Plan
 1. **Strip nonce2 hex from submit log** (`stratum.c` ~line 527) — noisy, 1-line cleanup
@@ -92,7 +92,14 @@ Optional output polish + robustness fixes.
 
 #### Note on benchmarking
 - `./sa-tromp 1` is too noisy (±15% on Beignet). Use `./sa-tromp 3` for stable average.
-- Optimization from Session 42 is confirmed in binary (-march=native + persistent extract buffer).
+- sol/s = solutions/total_time, not nonces/s — variance is normal.
+
+#### Repo state after Session 42 cleanup
+- Dead files removed (328 files, sa-solver, logs, debug tools, thirdparty)
+- Reference solvers moved to `~/equihash_tromp`, `~/nheqminer-C-192_7-zero`
+- Makefile: `make` builds sa-tromp, silent, no warnings, .PHONY declared
+- Binary `sa-tromp` gitignored (rebuild with `make`)
+- `make clean && make` is the correct full rebuild command
 
 ### ⚠️ Session 42 State (2026-03-20) — COMPLETE ✅
 
