@@ -229,14 +229,12 @@ void init_opencl(void) {
       name_lower[strlen(combined)] = '\0';
       if (strstr(name_lower, "beignet")) {
           g_driver = DRIVER_BEIGNET;
-          fprintf(stderr, "[opencl] driver: Beignet (%s)\n", version);
-          fprintf(stderr, "[opencl] NDRange batch: 2^18 (Beignet hang limit)\n");
+          fprintf(stderr, "[opencl] Beignet (%s)\n", version);
       } else {
           g_driver = DRIVER_NEO;
-          fprintf(stderr, "[opencl] driver: Intel NEO / %s (%s)\n", name, version);
-          fprintf(stderr, "[opencl] NDRange batch: 2^20 (NEO — no hang limit)\n");
+          fprintf(stderr, "[opencl] Intel NEO (%s)\n", version);
       }
-      printf("OpenCL platform [%d]: %s\n", g_platform_idx, name); }
+      (void)name; }
 
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
     check_error(err, "clGetDeviceIDs");
@@ -611,8 +609,6 @@ int mine_batch(uint32_t nonce_idx, const uint8_t *nonce32, uint8_t *header, int 
                             0, sizeof(uint32_t), &nsol, 0, NULL, NULL);
         if (nsol > 65536) nsol = 65536;
 
-        if (show_progress)
-            printf("  Stage 7: %u solution candidate(s) in bucket 0\n", nsol);
 
         if (nsol > 0) {
             /* cpu_attrs[0..7] already populated during pipeline (immediate readback) */
@@ -629,20 +625,13 @@ int mine_batch(uint32_t nonce_idx, const uint8_t *nonce32, uint8_t *header, int 
                     if (solution_cb) {
                         solution_cb(indices, nonce_idx, ud);
                     } else {
-                        printf("  SOLUTION nonce=%u:", nonce_idx);
-                        for (int i = 0; i < PROOFSIZE; i++) printf(" %08x", indices[i]);
-                        printf("\n");
-                        printf("  VERIFIED OK\n");
-                        printf("Solution");
+                        printf("  Solution nonce=%u:", nonce_idx);
                         for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
                         printf("\n");
                     }
                 }
             }
 
-            if (show_progress)
-                printf("  Extraction: %u candidates → %d extracted (distinct) → %d verified\n",
-                       nsol, n_extracted, n_verified);
             /* buf_tree0/tree1/counts are persistent globals — do NOT release here */
             for (int r = 0; r < 8; r++) { free(cpu_attrs[r]); cpu_attrs[r] = NULL; }
             return valid_solutions;
@@ -664,17 +653,35 @@ typedef struct {
     uint8_t        headernonce[140];   /* for sha256d target check */
 } stratum_cb_arg_t;
 
-/* Returns 1 if sha256d(headernonce[0..139]) <= target[0..31] (big-endian), 0 otherwise. */
-static int sha256d_check_target(const uint8_t *headernonce, const uint8_t *target)
+/* Returns 1 if sha256d(headernonce[0..139]) <= target[0..31] (big-endian), 0 otherwise.
+ * If hash_out != NULL, writes the 32-byte sha256d result to it. */
+static int sha256d_check_target(const uint8_t *headernonce, const uint8_t *target,
+                                uint8_t *hash_out)
 {
     uint8_t h1[SHA256_DIGEST_SIZE], h2[SHA256_DIGEST_SIZE];
     Sha256_Onestep(headernonce, 140, h1);
     Sha256_Onestep(h1, SHA256_DIGEST_SIZE, h2);
+    if (hash_out) memcpy(hash_out, h2, SHA256_DIGEST_SIZE);
     for (int i = 0; i < 32; i++) {
         if (h2[i] < target[i]) return 1;
         if (h2[i] > target[i]) return 0;
     }
     return 1;  /* equal: exactly meets target */
+}
+
+/* Compute share difficulty matching s-nomp formula:
+ * diff1 = 0x0007ffff...ff (252-bit value), shareDiff = diff1 / hash_as_bignum.
+ * We approximate using the leading 8 bytes of the hash as a double. */
+static double share_diff(const uint8_t *hash)
+{
+    /* diff1 upper 8 bytes: 0x0007ffffffffffff */
+    static const double diff1_hi = (double)0x0007ffffffffffffULL;
+    /* hash as double using leading 8 bytes (big-endian) */
+    uint64_t hash_hi = 0;
+    for (int i = 0; i < 8; i++)
+        hash_hi = (hash_hi << 8) | hash[i];
+    if (hash_hi == 0) return 0.0;
+    return diff1_hi / (double)hash_hi;
 }
 
 static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
@@ -699,18 +706,18 @@ static void stratum_solution_cb(const uint32_t *indices, uint32_t nonce_idx,
     sol_hex[6 + COMPRESSED_SOL_SIZE * 2] = '\0';
 
     /* Only submit if sha256d(headernonce) meets pool difficulty target */
+    uint8_t share_hash[32];
     {
         uint8_t target[32];
         pthread_mutex_lock(&a->ctx->job_mutex);
         memcpy(target, a->ctx->target, 32);
         pthread_mutex_unlock(&a->ctx->job_mutex);
-        if (!sha256d_check_target(a->headernonce, target)) {
-            fprintf(stderr, "[stratum] Solution below difficulty, skipping\n");
+        if (!sha256d_check_target(a->headernonce, target, share_hash)) {
             return;
         }
     }
 
-    stratum_submit(a->ctx, a->job_id, a->ntime, a->nonce2, sol_hex);
+    stratum_submit_diff(a->ctx, a->job_id, a->ntime, a->nonce2, sol_hex, share_diff(share_hash));
 }
 
 static void *stratum_recv_thread(void *arg)
@@ -733,7 +740,6 @@ static void run_stratum_mode(const char *host, const char *port,
                              const char *user, const char *pass)
 {
     init_opencl();
-    printf("[stratum] OpenCL ready\n"); fflush(stdout);
 
     stratum_ctx_t ctx;
     stratum_init(&ctx, host, port, user, pass);
@@ -788,8 +794,7 @@ static void run_stratum_mode(const char *host, const char *port,
         g_cancel_mining = 0;
         ctx.cancel = 0;  /* consumed — will be re-set if another clean job arrives */
         clFinish(queue);  /* flush any pending OpenCL ops before starting new batch */
-        fprintf(stderr, "[stratum] Mining nonce=%08x nonce2=%u\n", nonce_val, nonce2);
-        int r = mine_batch(nonce_val, nonce32, job.header, 1,
+        int r = mine_batch(nonce_val, nonce32, job.header, 0,
                            stratum_solution_cb, &cb_arg);
         if (r == -1) {
             /* Interrupted by new job — reset nonce2 for fresh job */
@@ -804,7 +809,7 @@ static void run_stratum_mode(const char *host, const char *port,
             clock_gettime(CLOCK_MONOTONIC, &now);
             double elapsed = (now.tv_sec - rate_start.tv_sec) +
                              (now.tv_nsec - rate_start.tv_nsec) / 1e9;
-            printf("[stratum] Rate: %.4f sol/s (%d solutions in %.1fs, %d nonces)\n",
+            printf("[pool] Rate: %.4f sol/s (%d solutions in %.1fs, %d nonces)\n",
                    elapsed > 0 ? rate_solutions / elapsed : 0.0,
                    rate_solutions, elapsed, rate_nonces);
             fflush(stdout);
@@ -842,9 +847,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("sa-tromp Equihash 192,7 GPU Miner\n");
-    printf("NBUCKETS=%u  NSLOTS=%u  BUCKBITS=%u  RESTBITS=%u\n",
-           NBUCKETS, NSLOTS, BUCKBITS, RESTBITS);
+    printf("silentarmy-tromp Equihash 192,7 Intel OpenCL Miner\n");
     fflush(stdout);
 
     /* Stratum pool mode */
@@ -874,11 +877,9 @@ int main(int argc, char *argv[]) {
     }
 
     /* Solo mode */
-    printf("Mining nonces: %u\n\n", total_nonces);
-    fflush(stdout);
-
     init_opencl();
-    printf("OpenCL ready\n\n"); fflush(stdout);
+    printf("Mining %u nonce(s)\n\n", total_nonces);
+    fflush(stdout);
 
     uint8_t header[108] = {0};  /* 108-byte header prefix; nonce embedded in mine_batch */
 
@@ -886,10 +887,8 @@ int main(int argc, char *argv[]) {
     int total_solutions = 0;
 
     for (uint32_t n = start_nonce; n < start_nonce + total_nonces; n++) {
-        int solutions = mine_batch(n, NULL, header, 1, NULL, NULL);
+        int solutions = mine_batch(n, NULL, header, 0, NULL, NULL);
         total_solutions += solutions;
-        if (solutions > 0)
-            printf("VALID SOLUTION(S) FOUND in nonce %u!\n", n);
 
         /* Reinit OpenCL between attempts (Beignet stability) */
         /* NOTE: disabled — cleanup_opencl hangs on Beignet after multi-nonce runs */

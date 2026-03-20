@@ -205,8 +205,19 @@ static void handle_notify(stratum_ctx_t *ctx, const char *line)
 
     if (!ok) { fprintf(stderr, "[stratum] notify: hex decode error\n"); return; }
 
-    fprintf(stderr, "[stratum] New job: %s  ntime=%s  clean=%d\n",
-            job_id, ntime, clean);
+    /* Compute pool target difficulty: diff1 / target_as_bignum (matching s-nomp formula) */
+    double _diff = 0.0;
+    pthread_mutex_lock(&ctx->job_mutex);
+    if (ctx->target_set) {
+        uint64_t t = 0;
+        for (int _i = 0; _i < 8; _i++) t = (t << 8) | ctx->target[_i];
+        if (t > 0) _diff = (double)0x0007ffffffffffffULL / (double)t;
+    }
+    pthread_mutex_unlock(&ctx->job_mutex);
+    if (_diff > 0.0)
+        fprintf(stderr, "[pool] New job: %s  difficulty=%.8f\n", job_id, _diff);
+    else
+        fprintf(stderr, "[pool] New job: %s\n", job_id);
 
     pthread_mutex_lock(&ctx->job_mutex);
     ctx->cancel = 1;  /* cancel on every new job, not just clean=1 */
@@ -228,7 +239,6 @@ static void handle_set_target(stratum_ctx_t *ctx, const char *line)
     if (!params) return;
     char target_hex[68] = {0};
     json_array_get_str(params + strlen("\"params\":["), 0, target_hex, sizeof(target_hex));
-    fprintf(stderr, "[stratum] Target: %s\n", target_hex);
     if (strlen(target_hex) != 64) {
         fprintf(stderr, "[stratum] set_target: bad length %zu\n", strlen(target_hex));
         return;
@@ -249,10 +259,29 @@ static void handle_set_target(stratum_ctx_t *ctx, const char *line)
  */
 static void handle_share_result(const char *line, int id)
 {
-    if (strstr(line, "\"result\":true"))
-        fprintf(stderr, "[stratum] Share #%d ACCEPTED\n", id);
-    else
-        fprintf(stderr, "[stratum] Share #%d REJECTED: %s\n", id, line);
+    if (strstr(line, "\"result\":true")) {
+        fprintf(stderr, "[pool] Share #%d ACCEPTED\n", id - 3);
+    } else {
+        /* Extract error message string from "error":[code,"message"] */
+        char errmsg[128] = "unknown";
+        const char *ep = strstr(line, "\"error\":[");
+        if (ep) {
+            ep = strchr(ep, '"'); /* skip to opening quote of code — but code is int */
+            /* skip past [code, to find the string */
+            ep = strstr(ep + 1, ",\"");
+            if (ep) {
+                ep += 2; /* skip ," */
+                const char *end = strchr(ep, '"');
+                if (end) {
+                    size_t len = (size_t)(end - ep);
+                    if (len >= sizeof(errmsg)) len = sizeof(errmsg) - 1;
+                    memcpy(errmsg, ep, len);
+                    errmsg[len] = '\0';
+                }
+            }
+        }
+        fprintf(stderr, "[pool] Share #%d REJECTED: %s\n", id - 3, errmsg);
+    }
 }
 
 /*
@@ -338,15 +367,14 @@ static int dispatch_line(stratum_ctx_t *ctx, const char *line)
         }
         if (ctx->nonce2_size <= 0) ctx->nonce2_size = 32 - ctx->nonce1_len; /* default: fill remaining nonce bytes */
         if (ctx->nonce2_size <= 0) ctx->nonce2_size = 4;
-        fprintf(stderr, "[stratum] Subscribed. nonce1=%s (%d bytes) nonce2_size=%d\n",
-                nonce1_hex, ctx->nonce1_len, ctx->nonce2_size);
+        fprintf(stderr, "[pool] Subscribed. nonce1=%s\n", nonce1_hex);
         return 0;
     }
 
     /* Response to authorize (id=2) */
     if (msg_id == 2) {
         if (strstr(line, "\"result\":true")) {
-            fprintf(stderr, "[stratum] Authorized.\n");
+            fprintf(stderr, "[pool] Authorized.\n");
             ctx->authorized = 1;
         } else {
             fprintf(stderr, "[stratum] Authorization FAILED: %s\n", line);
@@ -413,7 +441,7 @@ int stratum_connect(stratum_ctx_t *ctx)
     struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    fprintf(stderr, "[stratum] Connected to %s:%s\n", ctx->host, ctx->port);
+    fprintf(stderr, "[pool] Connected to %s:%s\n", ctx->host, ctx->port);
 
     /* Subscribe */
     char msg[1024];
@@ -477,8 +505,8 @@ int stratum_get_job(stratum_ctx_t *ctx, stratum_job_t *dst)
     return valid;
 }
 
-int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
-                   uint32_t nonce2_val, const char *sol_hex)
+int stratum_submit_diff(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
+                   uint32_t nonce2_val, const char *sol_hex, double diff)
 {
     int id = ctx->submit_id++;
 
@@ -524,7 +552,7 @@ int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
              "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"]}\n",
              id, ctx->user, job_id, ntime, nonce2_submit, sol_hex);
 
-    fprintf(stderr, "[stratum] Submitting share #%d\n", id);
+    fprintf(stderr, "[pool] Submitting share #%d  diff=%.8f\n", id - 3, diff);
     return sock_send(ctx->sockfd, msg);
 }
 

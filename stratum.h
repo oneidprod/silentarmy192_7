@@ -83,8 +83,8 @@ int stratum_get_job(stratum_ctx_t *ctx, stratum_job_t *dst);
  * sol_hex:    800-char hex string of compressed solution (no fd9001 prefix)
  * Returns 0 on success, -1 on send error.
  */
-int stratum_submit(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
-                   uint32_t nonce2_val, const char *sol_hex);
+int stratum_submit_diff(stratum_ctx_t *ctx, const char *job_id, const char *ntime,
+                   uint32_t nonce2_val, const char *sol_hex, double diff);
 
 /* Close socket and free resources. */
 void stratum_disconnect(stratum_ctx_t *ctx);

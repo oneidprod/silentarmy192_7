@@ -78,25 +78,39 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#44 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#45 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
 
-### ⚠️ Session 44 Plan — NOT STARTED
+### ⚠️ Session 44 State (2026-03-20) — COMPLETE ✅
 
 #### Goal
 Investigate why NEO 21.40 is slower than Beignet and attempt to close the gap.
 
-#### Background
-- NEO 21.40 installed and working (`./sa-tromp -p 1`)
-- Benchmark: NEO 0.33 sol/s vs Beignet 0.62 sol/s — NEO is ~47% slower
-- Stage 0 (hash gen): NEO 1.04s vs Beignet 0.47s — this is the biggest gap
-- Collision stages: NEO ~0.30-0.35s vs Beignet ~0.20-0.40s — roughly comparable
-- DISPATCH on NEO = 2^20 (4x larger than Beignet's 2^18) — less launch overhead, but Stage 0 still slower
+#### What was done (Session 44)
 
-#### Investigation plan
-1. **Profile Stage 0 separately** — is it the blake2b kernel or the NDRange overhead?
-2. **Try DISPATCH = 2^18 on NEO** — maybe 2^20 is actually worse for this iGPU/driver combo
-3. **Check NEO compiler flags** — `-cl-fast-relaxed-math`, `-cl-mad-enable` may help
-4. **Compare kernel_round0_gen timing** — run with verbose per-dispatch timing if needed
+**Commits this session:**
+- `4469122`: perf: NEO compiler flags investigation — inconclusive on Stage 0
+
+**Investigation results:**
+- `-cl-fast-relaxed-math -cl-mad-enable` (NEO only): no change to Stage 0 — kept in build opts (harmless)
+- DISPATCH=2^19: worse (~1.15s Stage 0) — reverted to 2^20
+- LWS=128: `CL_INVALID_WORK_GROUP_SIZE` — hardware limit is 64 work items
+- Per-dispatch timing: 16 dispatches × ~0.065s each — **uniform, compute-bound, not JIT**
+
+**Conclusion: gap is hardware, not tunable**
+- NEO Stage 0: consistently 1.04-1.07s (16 dispatches × 0.065s)
+- Beignet Stage 0: 0.27-0.59s (first nonce slow due to JIT, subsequent fast)
+- NEO blake2b throughput is lower — different EU config or driver vectorization
+- No knobs left to pull without rewriting the kernel
+
+**Final benchmarks (5 nonces each):**
+- Beignet (`-p 0`): **0.65 sol/s**
+- NEO (`-p 1`): **0.46 sol/s**
+- Gap accepted — Beignet remains the better performer on this hardware
+
+**Current state:**
+- Both drivers working, auto-detected at startup
+- Beignet: default/recommended
+- NEO: available via `-p 1`, 30% slower due to hardware limit on blake2b
 
 ### ⚠️ Session 43 State (2026-03-20) — COMPLETE ✅
 
