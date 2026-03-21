@@ -37,13 +37,14 @@ Arguments:
 
 Tested on Intel UHD 630 (Coffee Lake iGPU, ~5.8 GB shared RAM):
 
-| Driver  | Platform | sol/s |
-|---------|----------|-------|
-| Beignet | `-p 0`   | ~0.65 |
-| NEO 21.40 | `-p 1` | ~0.46 |
+| Driver     | sol/s |
+|------------|-------|
+| Beignet 1.3 | ~0.65 |
+| NEO 21.40  | ~0.46 |
 
 Beignet is recommended on this hardware — it outperforms NEO 21.40 on the
-blake2b Stage 0 kernel. Newer NEO versions (22.x+) may close the gap.
+blake2b Stage 0 kernel. Use `clinfo -l` to find the correct `-p` index for
+each driver (see Selecting a platform below).
 
 ## OpenCL driver setup (Intel)
 
