@@ -52,8 +52,11 @@ sa-tromp auto-detects Beignet vs NEO at startup and prints the driver name.
 ### Beignet (recommended)
 
 ```
-sudo apt-get install beignet-opencl-icd
+sudo apt-get install beignet-dev
 ```
+
+`beignet-dev` includes the compile-time headers and pulls in `beignet-opencl-icd`
+(the runtime) as a dependency — one command is all you need.
 
 Tested: Beignet 1.3 on Ubuntu 21.04.
 
@@ -99,8 +102,6 @@ The driver name and NDRange batch size are printed at startup:
 make
 ```
 
-Requires `beignet-dev` for compilation (installs headers to `/usr/include/CL/`).
-`beignet-opencl-icd` is the runtime only and does not include headers.
 The resulting binary works with both Beignet and NEO at runtime.
 
 To force a clean rebuild:
