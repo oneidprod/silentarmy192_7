@@ -62,8 +62,19 @@ Tested: Beignet 1.3 on Ubuntu 21.04.
 
 ### Intel NEO (intel-opencl-icd)
 
-Install debs from https://github.com/intel/compute-runtime/releases.
-Required packages: `intel-gmmlib`, `intel-igc-core`, `intel-igc-opencl`, `intel-opencl-icd`.
+```
+mkdir intelopencldebs && cd intelopencldebs
+
+wget https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.8744/intel-igc-core_1.0.8744_amd64.deb
+wget https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.8744/intel-igc-opencl_1.0.8744_amd64.deb
+wget https://github.com/intel/compute-runtime/releases/download/21.40.21182/intel-opencl_21.40.21182_amd64.deb
+wget https://github.com/intel/compute-runtime/releases/download/21.40.21182/intel-ocloc_21.40.21182_amd64.deb
+wget https://github.com/intel/compute-runtime/releases/download/21.40.21182/intel-gmmlib_21.2.1_amd64.deb
+wget https://github.com/intel/compute-runtime/releases/download/21.40.21182/intel-level-zero-gpu_1.2.21182_amd64.deb
+
+sudo dpkg -i *.deb
+sudo apt-get install -f
+```
 
 Select NEO explicitly with `-p 1`. Note: NEO 20.x fails to compile the kernel
 due to an `i128` backend error — use NEO 21.40 or newer.
