@@ -78,7 +78,46 @@ Fixing the attr encoding at minimum allows correct Stage 1→2 cascade for batch
 
 ## Immediate Next Step
 
-**NEXT SESSION** — start with: "Session#45 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+**NEXT SESSION** — start with: "Session#46 Run your map tool, read CLAUDE_SONNET_4.6.md. Resume from IN PROGRESS marker."
+
+**Goal**: Investigate squeezing more hashrate out of the kernel (Beignet, ~0.65 sol/s baseline).
+Potential areas:
+- Profile where time is spent per nonce (Stage 0 blake vs stages 1-7 vs CPU extraction)
+- Tune DISPATCH / LWS for Beignet
+- Look at kernel vectorization opportunities in `input.cl`
+- Consider NSLOTS tuning (memory vs collision rate tradeoff)
+
+### ⚠️ Session 45 State (2026-03-21) — COMPLETE ✅
+
+#### Goal
+Housekeeping: get miner running on physical 3060 machine (at home), fix OOM, clean up output, fix pool reconnect, fix share_diff byte order bug.
+
+#### What was done (Session 45)
+
+**Commits this session:**
+- `9619ba8`: cleanup: remove solution output + update README, gitignore
+- `ee24d5b`: docs: clarify beignet-dev installs everything needed
+- `df995e3`: docs: remove NDRange batch line from README
+- `54251fa`: docs: add exact NEO 21.40 deb install commands
+- `dbc49ee`: docs: clarify platform index order is system-dependent
+- `fed0d1a`: docs: add clinfo -l example to identify platform indexes
+- `1c40cc9`: docs: remove hardcoded -p from performance table
+- `bac7bcb`: feat: auto-reconnect on stratum disconnect
+- `a5ee587`: fix: share_diff byte order — read hash as little-endian
+
+**Key findings:**
+- Physical machine has 7.6GB RAM + hugepages locking 5GB → OOM on sa-tromp launch. Fixed by removing hugepages from grub.
+- User needed `video` + `render` groups after reboot to access GPU without root.
+- NEO grabbed `-p 0`, Beignet on `-p 1` — platform order is system-dependent, documented with `clinfo -l`.
+- Benchmarks confirmed: Beignet ~0.65 sol/s, NEO ~0.46 sol/s (matches previous session).
+- Pool mining working and reconnects automatically on disconnect.
+- share_diff was reading SHA256d hash big-endian but it's little-endian — showed ~4x wrong value. Fixed to read bytes 31→24.
+- Pool initial diff lowered (snomp side) to match miner's real output (~0.000125 vs 0.0005 assigned).
+
+**Current state:**
+- Beignet (`-p 1` on this machine): **0.65 sol/s benchmark, ~0.10-0.15 sol/s pool**
+- Pool mining stable: auto-reconnect, correct diff display, shares accepted
+- All committed and pushed to `rewrite` branch
 
 ### ⚠️ Session 44 State (2026-03-20) — COMPLETE ✅
 
