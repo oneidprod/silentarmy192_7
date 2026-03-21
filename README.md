@@ -81,12 +81,27 @@ due to an `i128` backend error — use NEO 21.40 or newer.
 
 ### Selecting a platform
 
-Platform index order depends on your system. The driver name is printed at
-startup so you can confirm which is active:
+Platform index order depends on your system. Use `clinfo -l` to list platforms:
 
 ```
-./sa-tromp -p 0    # check output: [opencl] <driver name>
-./sa-tromp -p 1    # try the other platform
+$ clinfo -l
+Platform #0: Intel(R) OpenCL HD Graphics
+ `-- Device #0: Intel(R) UHD Graphics 630 [0x3e92]
+Platform #1: Intel Gen OCL Driver
+ `-- Device #0: Intel(R) UHD Graphics Coffee Lake Desktop GT2
+```
+
+`Intel(R) OpenCL HD Graphics` = NEO, `Intel Gen OCL Driver` = Beignet.
+Pass the platform number with `-p`:
+
+```
+./sa-tromp -p 0    # NEO in the example above
+./sa-tromp -p 1    # Beignet in the example above
+```
+
+The driver name is also printed at startup to confirm:
+```
+[opencl] Beignet (OpenCL 2.0 beignet 1.3)
 ```
 
 ## System requirements
