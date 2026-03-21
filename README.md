@@ -81,14 +81,12 @@ due to an `i128` backend error — use NEO 21.40 or newer.
 
 ### Selecting a platform
 
-```
-./sa-tromp -p 0    # Beignet
-./sa-tromp -p 1    # NEO
-```
+Platform index order depends on your system. The driver name is printed at
+startup so you can confirm which is active:
 
-The driver name is printed at startup:
 ```
-[opencl] driver: Beignet (OpenCL 2.0 beignet 1.3)
+./sa-tromp -p 0    # check output: [opencl] <driver name>
+./sa-tromp -p 1    # try the other platform
 ```
 
 ## System requirements
