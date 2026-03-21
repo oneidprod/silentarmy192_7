@@ -75,10 +75,9 @@ due to an `i128` backend error — use NEO 21.40 or newer.
 ./sa-tromp -p 1    # NEO
 ```
 
-The driver name and NDRange batch size are printed at startup:
+The driver name is printed at startup:
 ```
 [opencl] driver: Beignet (OpenCL 2.0 beignet 1.3)
-[opencl] NDRange batch: 2^18 (Beignet hang limit)
 ```
 
 ## System requirements
