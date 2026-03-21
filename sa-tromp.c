@@ -673,10 +673,10 @@ static double share_diff(const uint8_t *hash)
 {
     /* diff1 upper 8 bytes: 0x0007ffffffffffff */
     static const double diff1_hi = (double)0x0007ffffffffffffULL;
-    /* hash as double using leading 8 bytes (big-endian) */
+    /* hash is little-endian — most significant bytes are at the end */
     uint64_t hash_hi = 0;
     for (int i = 0; i < 8; i++)
-        hash_hi = (hash_hi << 8) | hash[i];
+        hash_hi = (hash_hi << 8) | hash[31 - i];
     if (hash_hi == 0) return 0.0;
     return diff1_hi / (double)hash_hi;
 }

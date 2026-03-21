@@ -11,7 +11,7 @@
 #  -P "c=ZER,zap=ZER"
 
 # local test snomp server
-./sa-tromp -p 0 \
+./sa-tromp -p 1 \
   -o stratum+tcp://192.9.246.79:3092 \
   -u t1e6nAkZLoXUgwRuJ9qj2CF15qkroWVsVVQ.test \
   -P x
