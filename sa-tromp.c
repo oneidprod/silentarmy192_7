@@ -82,6 +82,7 @@ static void eh_genhash(const blake2b_state_t *ctx, uint32_t idx, uint32_t nonce,
 static int verbose = 0;
 volatile int g_cancel_mining = 0;
 volatile int g_shutdown = 0;
+volatile int g_disconnected = 0;
 static void sigint_handler(int s) { (void)s; g_shutdown = 1; g_cancel_mining = 1; }
 
 static uint32_t eh_verifyrec(const blake2b_state_t *ctx, uint32_t *indices, uint8_t *hash, int r, uint32_t nonce)
@@ -722,6 +723,8 @@ static void *stratum_recv_thread(void *arg)
     while (!g_shutdown) {
         if (stratum_recv_line(ctx) < 0) {
             fprintf(stderr, "[stratum] Disconnected\n");
+            g_disconnected = 1;
+            g_cancel_mining = 1;
             break;
         }
         /* If a clean new job arrived, cancel current mining batch */
@@ -739,21 +742,29 @@ static void run_stratum_mode(const char *host, const char *port,
 
     stratum_ctx_t ctx;
     stratum_init(&ctx, host, port, user, pass);
+
+    struct timespec rate_start;
+    clock_gettime(CLOCK_MONOTONIC, &rate_start);
+    int rate_solutions = 0;
+    int rate_nonces = 0;
+
+reconnect:
+    if (g_shutdown) goto done;
+
     if (stratum_connect(&ctx) < 0) {
-        fprintf(stderr, "[stratum] Failed to connect\n");
-        cleanup_opencl();
-        return;
+        fprintf(stderr, "[stratum] Failed to connect, retrying in 5s...\n");
+        sleep(5);
+        goto reconnect;
     }
+
+    g_disconnected = 0;
+    g_cancel_mining = 0;
 
     pthread_t recv_tid;
     pthread_create(&recv_tid, NULL, stratum_recv_thread, &ctx);
 
     uint32_t nonce2 = 0;
-    struct timespec rate_start;
-    clock_gettime(CLOCK_MONOTONIC, &rate_start);
-    int rate_solutions = 0;
-    int rate_nonces = 0;
-    while (!g_shutdown) {
+    while (!g_shutdown && !g_disconnected) {
         stratum_job_t job;
         if (!stratum_get_job(&ctx, &job)) {
             usleep(100000);
@@ -793,7 +804,7 @@ static void run_stratum_mode(const char *host, const char *port,
         int r = mine_batch(nonce_val, nonce32, job.header, 0,
                            stratum_solution_cb, &cb_arg);
         if (r == -1) {
-            /* Interrupted by new job — reset nonce2 for fresh job */
+            /* Interrupted by new job or disconnect — reset nonce2 for fresh job */
             nonce2 = 0;
             continue;
         }
@@ -814,6 +825,14 @@ static void run_stratum_mode(const char *host, const char *port,
 
     stratum_disconnect(&ctx);
     pthread_join(recv_tid, NULL);
+
+    if (g_disconnected && !g_shutdown) {
+        fprintf(stderr, "[stratum] Reconnecting in 5s...\n");
+        sleep(5);
+        goto reconnect;
+    }
+
+done:
     cleanup_opencl();
 }
 
