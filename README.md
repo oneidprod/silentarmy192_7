@@ -2,14 +2,14 @@
 
 A GPU miner for Zcash (and compatible coins) using the Equihash 192,7
 proof-of-work algorithm. Written in OpenCL, targeting Intel integrated GPUs
-via Beignet or Intel NEO drivers. Supports solo mining and Stratum pool mining.
+via Beignet or Intel NEO drivers. Supports benchmark mode and Stratum pool mining.
 
 ## Quick start
 
 ```
 make
 ./sa-tromp 1        # mine 1 nonce (test/benchmark)
-./sa-tromp          # mine continuously in solo mode (default: 100000 nonces)
+./sa-tromp          # benchmark mode: mine continuously (default: 100000 nonces)
 ```
 
 ## Pool mining (Stratum)
@@ -30,7 +30,7 @@ Options:
   -w WORKER  pool worker name (default: worker1)
 
 Arguments:
-  nonces     number of nonces to mine in solo mode (default: 100000)
+  nonces     number of nonces to mine in benchmark mode (default: 100000)
 ```
 
 ## Performance
@@ -78,14 +78,30 @@ The driver name and NDRange batch size are printed at startup:
 [opencl] NDRange batch: 2^18 (Beignet hang limit)
 ```
 
+## System requirements
+
+- **RAM**: At least 4 GB free. If hugepages are configured (e.g. for xmrig),
+  they lock physical memory and will cause OOM when the GPU also allocates.
+  Disable or reduce hugepages before running:
+  ```
+  sudo sysctl vm.nr_hugepages=0
+  ```
+- **User groups**: Your user must be in the `video` and `render` groups to
+  access the GPU without root:
+  ```
+  sudo usermod -aG video,render $USER
+  # then log out and back in
+  ```
+
 ## Compilation
 
 ```
 make
 ```
 
-Requires Beignet headers (`beignet-dev` or `beignet-opencl-icd`) for
-compilation. The resulting binary works with both Beignet and NEO at runtime.
+Requires `beignet-dev` for compilation (installs headers to `/usr/include/CL/`).
+`beignet-opencl-icd` is the runtime only and does not include headers.
+The resulting binary works with both Beignet and NEO at runtime.
 
 To force a clean rebuild:
 ```

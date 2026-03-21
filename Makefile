@@ -1,5 +1,5 @@
-OPENCL_HEADERS = "/usr/lib/x86_64-linux-gnu/beignet/include/"
-LIBOPENCL      = "/usr/lib/x86_64-linux-gnu/beignet/"
+OPENCL_HEADERS = "/usr/include"
+LIBOPENCL      = "/lib/x86_64-linux-gnu"
 
 CC      = gcc
 CPPFLAGS = -I${OPENCL_HEADERS} -DCL_TARGET_OPENCL_VERSION=120

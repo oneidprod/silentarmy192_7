@@ -1,5 +1,3 @@
-export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/beignet":$LD_LIBRARY_PATH
-
 # pooly.ca (confirmed working — ACCEPTED shares)
 #./sa-tromp -p 0 \
 #  -o stratum+tcp://pooly.ca:3050 \

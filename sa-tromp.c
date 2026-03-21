@@ -624,10 +624,6 @@ int mine_batch(uint32_t nonce_idx, const uint8_t *nonce32, uint8_t *header, int 
                     valid_solutions++;
                     if (solution_cb) {
                         solution_cb(indices, nonce_idx, ud);
-                    } else {
-                        printf("  Solution nonce=%u:", nonce_idx);
-                        for (int i = 0; i < PROOFSIZE; i++) printf(" %x", indices[i]);
-                        printf("\n");
                     }
                 }
             }
